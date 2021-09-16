@@ -273,7 +273,8 @@ interface DiscoveryViewModel {
             val drawerParamsClicked = childFilterRowClick
                 .mergeWith(topFilterRowClick)
                 .withLatestFrom(
-                    pagerSelectedPage.map { DiscoveryUtils.sortFromPosition(it) } ) { drawerClickParams, second ->
+                    pagerSelectedPage.map { DiscoveryUtils.sortFromPosition(it) }
+                ) { drawerClickParams, second ->
                     if (drawerClickParams.params().sort() == null)
                         drawerClickParams.params().toBuilder().sort(second).build()
                     else drawerClickParams.params()
