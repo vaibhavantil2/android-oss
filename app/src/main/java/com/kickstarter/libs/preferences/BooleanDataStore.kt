@@ -20,9 +20,9 @@ class BooleanDataStore @JvmOverloads constructor(
     private val context: Context,
     private val key: String,
     private val defaultValue: Boolean = false
-) : BooleanDataStoreType {
+) : BooleanPreferenceType {
 
-    val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
+    val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = context.packageName + "_preferences")
     private val prefKey = booleanPreferencesKey(this.key)
 
     override fun get(): Boolean {

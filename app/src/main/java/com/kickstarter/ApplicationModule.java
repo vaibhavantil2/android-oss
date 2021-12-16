@@ -48,8 +48,6 @@ import com.kickstarter.libs.models.OptimizelyEnvironment;
 import com.kickstarter.libs.perimeterx.PerimeterXClient;
 import com.kickstarter.libs.perimeterx.PerimeterXClientType;
 import com.kickstarter.libs.preferences.BooleanDataStore;
-import com.kickstarter.libs.preferences.BooleanDataStoreType;
-import com.kickstarter.libs.preferences.BooleanPreference;
 import com.kickstarter.libs.preferences.BooleanPreferenceType;
 import com.kickstarter.libs.preferences.IntPreference;
 import com.kickstarter.libs.preferences.IntPreferenceType;
@@ -383,24 +381,16 @@ public class ApplicationModule {
   @Singleton
   @AppRatingPreference
   @NonNull
-  static BooleanPreferenceType provideAppRatingPreference(final @NonNull SharedPreferences sharedPreferences) {
-    return new BooleanPreference(sharedPreferences, SharedPreferenceKey.HAS_SEEN_APP_RATING);
-  }
-
-  @Provides
-  @Singleton
-  @AppRatingPreference
-  @NonNull
-  static BooleanDataStoreType provideBooleanDataStoreType(final @ApplicationContext @NonNull Context context) {
-    return new BooleanDataStore(context, SharedPreferenceKey.FIRST_SESSION);
+  static BooleanPreferenceType provideAppRatingPreference(final @ApplicationContext @NonNull Context context) {
+    return new BooleanDataStore(context, SharedPreferenceKey.HAS_SEEN_APP_RATING);
   }
 
   @Provides
   @Singleton
   @FirstSessionPreference
   @NonNull
-  static BooleanPreferenceType provideFirstSessionPreference(final @NonNull SharedPreferences sharedPreferences) {
-    return new BooleanPreference(sharedPreferences, SharedPreferenceKey.FIRST_SESSION);
+  static BooleanPreferenceType provideFirstSessionPreference(final @ApplicationContext @NonNull Context context) {
+    return new BooleanDataStore(context, SharedPreferenceKey.FIRST_SESSION);
   }
 
   @Provides
@@ -500,8 +490,8 @@ public class ApplicationModule {
   @Singleton
   @GamesNewsletterPreference
   @NonNull
-  static BooleanPreferenceType provideGamesNewsletterPreference(final @NonNull SharedPreferences sharedPreferences) {
-    return new BooleanPreference(sharedPreferences, SharedPreferenceKey.HAS_SEEN_GAMES_NEWSLETTER);
+  static BooleanPreferenceType provideGamesNewsletterPreference(final @ApplicationContext @NonNull Context context) {
+    return new BooleanDataStore(context, SharedPreferenceKey.HAS_SEEN_GAMES_NEWSLETTER);
   }
 
   @Provides
