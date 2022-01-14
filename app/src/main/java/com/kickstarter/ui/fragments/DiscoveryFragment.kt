@@ -234,7 +234,7 @@ class DiscoveryFragment : BaseFragment<DiscoveryFragmentViewModel.ViewModel>() {
         this.viewModel.inputs.refresh()
     }
 
-    fun takeCategories(categories: List<Category?>) {
+    fun takeCategories(categories: List<Category>) {
         this.viewModel.inputs.rootCategories(categories)
     }
 
