@@ -65,7 +65,7 @@ interface DiscoveryFragmentViewModel {
         fun activity(): Observable<Activity>
 
         /** Emits a boolean indicating whether projects are being fetched from the API.  */
-        val isFetchingProjects: Observable<Boolean>
+        fun isFetchingProjects(): Observable<Boolean>
 
         /** Emits a list of projects to display. */
         fun projectList(): Observable<List<Pair<Project, DiscoveryParams>>>
@@ -135,7 +135,7 @@ interface DiscoveryFragmentViewModel {
         private val startProjectActivity: Observable<Triple<Project, RefTag, Boolean>>
         private val startUpdateActivity: Observable<Activity>
         private val startHeartAnimation = BehaviorSubject.create<Void>()
-        private val isFetchingInternal = BehaviorSubject.create<Boolean>()
+        private val isFetchingProjects = BehaviorSubject.create<Boolean>()
 
         init {
 
@@ -160,22 +160,32 @@ interface DiscoveryFragmentViewModel {
             val paginator = ApiPaginator.builder<Project, DiscoverEnvelope, DiscoveryParams?>()
                 .nextPage(nextPage)
                 .startOverWith(startOverWith)
-                .envelopeToListOfData { obj: DiscoverEnvelope -> obj.projects() }
-                .envelopeToMoreUrl { env: DiscoverEnvelope -> env.urls().api().moreProjects() }
-                .loadWithParams { params: DiscoveryParams -> apiClient.fetchProjects(params) }
-                .loadWithPaginationPath { paginationUrl: String -> apiClient.fetchProjects(paginationUrl) }
+                .envelopeToListOfData { obj: DiscoverEnvelope ->
+                    obj.projects()
+                }
+                .envelopeToMoreUrl { env: DiscoverEnvelope ->
+                    env.urls().api().moreProjects()
+                }
+                .loadWithParams { params: DiscoveryParams ->
+                    apiClient.fetchProjects(params)
+                }
+                .loadWithPaginationPath { paginationUrl: String ->
+                    apiClient.fetchProjects(paginationUrl)
+                }
                 .clearWhenStartingOver(false)
-                .concater { xs: List<Project>, ys: List<Project> -> ListUtils.concatDistinct(xs, ys) }
+                .concater { xs: List<Project>, ys: List<Project> ->
+                    ListUtils.concatDistinct(xs, ys)
+                }
                 .build()
 
             paginator.isFetching
                 .compose(bindToLifecycle())
-                .subscribe(isFetchingInternal)
+                .subscribe(isFetchingProjects)
 
             projectList
                 .compose(Transformers.ignoreValues())
                 .compose(bindToLifecycle())
-                .subscribe {  isFetchingInternal.onNext(false) }
+                .subscribe {  isFetchingProjects.onNext(false) }
 
             val activitySampleProjectClick = activitySampleProjectClick
                 .map<Pair<Project, RefTag>> { p: Project ->
@@ -490,8 +500,9 @@ interface DiscoveryFragmentViewModel {
             return activity
         }
 
-        override val isFetchingProjects: Observable<Boolean>
-            get() = this.isFetchingInternal
+        override fun isFetchingProjects(): Observable<Boolean> {
+            return this.isFetchingProjects
+        }
 
         override fun projectList(): Observable<List<Pair<Project, DiscoveryParams>>> {
             return projectList

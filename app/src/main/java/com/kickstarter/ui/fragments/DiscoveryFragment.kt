@@ -63,14 +63,14 @@ class DiscoveryFragment : BaseFragment<DiscoveryFragmentViewModel.ViewModel>() {
             recyclerViewPaginator = RecyclerViewPaginator(
                 this,
                 { this@DiscoveryFragment.viewModel.inputs.nextPage() },
-                this@DiscoveryFragment.viewModel.outputs.isFetchingProjects
+                this@DiscoveryFragment.viewModel.outputs.isFetchingProjects()
             )
         }
 
         binding?.discoverySwipeRefreshLayout?.let {
             SwipeRefresher(
                 this, it, { this.viewModel.inputs.refresh() }
-            ) { this.viewModel.outputs.isFetchingProjects }
+            ) { this.viewModel.outputs.isFetchingProjects() }
         }
 
         this.viewModel.outputs.activity()
