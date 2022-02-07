@@ -7,6 +7,7 @@ import android.text.method.LinkMovementMethod
 import android.util.Pair
 import android.view.View
 import androidx.annotation.RequiresApi
+import com.bogdwellers.pinchtozoom.ImageMatrixTouchHandler
 import com.kickstarter.R
 import com.kickstarter.databinding.PlaygroundLayoutBinding
 import com.kickstarter.libs.BaseActivity
@@ -18,6 +19,7 @@ import com.kickstarter.libs.qualifiers.RequiresActivityViewModel
 import com.kickstarter.mock.factories.ProjectFactory
 import com.kickstarter.models.Project
 import com.kickstarter.ui.IntentKey
+import com.kickstarter.ui.extensions.loadImage
 import com.kickstarter.ui.extensions.showSnackbar
 import com.kickstarter.viewmodels.PlaygroundViewModel
 import rx.android.schedulers.AndroidSchedulers
@@ -60,6 +62,11 @@ class PlaygroundActivity : BaseActivity<PlaygroundViewModel.ViewModel?>() {
         val element: TextViewElement = listOfElements.first() as TextViewElement
 
         binding.text.text = element.getStyledComponents(body, headerSize, this)
+
+        binding.normalImage.loadImage("https://d.newsweek.com/en/full/822411/pikachu-640x360-pokemon-anime.jpg?w=1600&h=1200&q=88&f=3ed1c0d6e3890cbc58be90f05908a8f5", this)
+        binding.zoomImage.loadImage("https://d.newsweek.com/en/full/822411/pikachu-640x360-pokemon-anime.jpg?w=1600&h=1200&q=88&f=3ed1c0d6e3890cbc58be90f05908a8f5", this)
+
+        binding.normalImage.setOnTouchListener(ImageMatrixTouchHandler(this))
 
         setStepper()
         setProjectActivityButtonClicks()

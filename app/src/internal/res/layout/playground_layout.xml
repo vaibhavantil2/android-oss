@@ -43,12 +43,15 @@
       app:layout_constraintStart_toStartOf="parent"
       app:layout_constraintEnd_toEndOf="parent"
       app:layout_constraintTop_toBottomOf="@id/appBar">
+
     <com.kickstarter.ui.views.Stepper
+        android:visibility="gone"
         android:id="@+id/stepper"
         android:layout_width="match_parent"
         android:layout_height="match_parent"/>
 
     <TextView
+        android:visibility="gone"
         android:id="@+id/text"
         app:layout_constraintTop_toBottomOf="@id/stepper"
         android:text="testing"
@@ -56,11 +59,32 @@
         android:layout_height="wrap_content"/>
 
     <TextView
+        android:visibility="gone"
         android:id="@+id/text2"
         app:layout_constraintTop_toBottomOf="@id/text"
         android:text="testing"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"/>
+
+    <androidx.appcompat.widget.AppCompatImageView
+        android:id="@+id/normalImage"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:adjustViewBounds="true"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        android:contentDescription="@null"/>
+
+    <com.kickstarter.ui.views.ZoomImageView
+        android:id="@+id/zoomImage"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/normalImage"
+        android:contentDescription="@null"/>
+
   </androidx.constraintlayout.widget.ConstraintLayout>
 
   <Button

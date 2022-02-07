@@ -268,6 +268,9 @@ dependencies {
     implementation 'com.google.firebase:firebase-inappmessaging-display'
     implementation 'com.google.firebase:firebase-perf'
 
+    // - pinch and zoom
+    implementation 'com.bogdwellers:pinchtozoom:0.1'
+
     // Testing
     testImplementation "junit:junit:4.13.2"
     testImplementation "org.mockito:mockito-core:4.0.0"
