@@ -113,8 +113,8 @@ class ZoomImageView @JvmOverloads constructor(
 
     fun fixTranslation() {
         mMatrix.getValues(mMatrixValues) // put matrix values into a float array so we can analyze
-        val transX = mMatrixValues!![Matrix.MTRANS_X] // get the most recent translation in x direction
-        val transY = mMatrixValues!![Matrix.MTRANS_Y] // get the most recent translation in y direction
+        val transX = mMatrixValues[Matrix.MTRANS_X] // get the most recent translation in x direction
+        val transY = mMatrixValues[Matrix.MTRANS_Y] // get the most recent translation in y direction
         val fixTransX = getFixTranslation(transX, viewWidth.toFloat(), origWidth * mSaveScale)
         val fixTransY = getFixTranslation(transY, viewHeight.toFloat(), origHeight * mSaveScale)
         if (fixTransX != 0f || fixTransY != 0f) mMatrix.postTranslate(fixTransX, fixTransY)
