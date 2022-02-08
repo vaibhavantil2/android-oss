@@ -8,7 +8,6 @@ import android.view.View
 import android.view.View.OnClickListener
 import androidx.cardview.widget.CardView
 import androidx.core.view.isVisible
-import com.bogdwellers.pinchtozoom.ImageMatrixTouchHandler
 import com.kickstarter.R
 import com.kickstarter.databinding.ViewImageWithCaptionBinding
 import com.kickstarter.libs.utils.extensions.isGif
@@ -29,14 +28,6 @@ class ImageWithCaptionView @JvmOverloads constructor(
             LayoutInflater.from(context),
             this, true
         )
-
-    init {
-        val listener = ImageMatrixTouchHandler(context)
-        listener.isDragOnPinchEnabled = true
-        listener.isRotateEnabled = false
-        listener.isScaleEnabled = true
-        binding.imageView.setOnTouchListener(listener)
-    }
 
     fun setImage(src: String) {
         if (src.isGif()) {

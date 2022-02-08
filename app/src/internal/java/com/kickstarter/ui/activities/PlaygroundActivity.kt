@@ -1,13 +1,15 @@
 package com.kickstarter.ui.activities
 
+import android.annotation.SuppressLint
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.text.method.LinkMovementMethod
 import android.util.Pair
+import android.view.MotionEvent
+import android.view.ScaleGestureDetector
 import android.view.View
 import androidx.annotation.RequiresApi
-import com.bogdwellers.pinchtozoom.ImageMatrixTouchHandler
 import com.kickstarter.R
 import com.kickstarter.databinding.PlaygroundLayoutBinding
 import com.kickstarter.libs.BaseActivity
@@ -21,6 +23,7 @@ import com.kickstarter.models.Project
 import com.kickstarter.ui.IntentKey
 import com.kickstarter.ui.extensions.loadImage
 import com.kickstarter.ui.extensions.showSnackbar
+import com.kickstarter.ui.views.ZoomImageView
 import com.kickstarter.viewmodels.PlaygroundViewModel
 import rx.android.schedulers.AndroidSchedulers
 
@@ -29,6 +32,7 @@ class PlaygroundActivity : BaseActivity<PlaygroundViewModel.ViewModel?>() {
     private lateinit var binding: PlaygroundLayoutBinding
     private lateinit var view: View
 
+    @SuppressLint("ClickableViewAccessibility")
     @RequiresApi(Build.VERSION_CODES.P)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -64,12 +68,29 @@ class PlaygroundActivity : BaseActivity<PlaygroundViewModel.ViewModel?>() {
         binding.text.text = element.getStyledComponents(body, headerSize, this)
 
         binding.normalImage.loadImage("https://d.newsweek.com/en/full/822411/pikachu-640x360-pokemon-anime.jpg?w=1600&h=1200&q=88&f=3ed1c0d6e3890cbc58be90f05908a8f5", this)
-        binding.zoomImage.loadImage("https://d.newsweek.com/en/full/822411/pikachu-640x360-pokemon-anime.jpg?w=1600&h=1200&q=88&f=3ed1c0d6e3890cbc58be90f05908a8f5", this)
-
-        binding.normalImage.setOnTouchListener(ImageMatrixTouchHandler(this))
+        binding.normalImage.setOnTouchListener(ScaleListener())
 
         setStepper()
         setProjectActivityButtonClicks()
+    }
+
+    private inner class ScaleListener : ScaleGestureDetector.SimpleOnScaleGestureListener(),
+        View.OnTouchListener {
+        override fun onScaleBegin(detector: ScaleGestureDetector): Boolean {
+            return true
+        }
+
+        override fun onScale(detector: ScaleGestureDetector): Boolean {
+            var mScaleFactor = detector.scaleFactor
+            binding.normalImage.animate().scaleX(2f).start()
+            binding.normalImage.animate().scaleY(2f).start()
+            return true
+        }
+
+        @SuppressLint("ClickableViewAccessibility")
+        override fun onTouch(v: View?, event: MotionEvent?): Boolean {
+            return true
+        }
     }
 
     /**

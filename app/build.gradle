@@ -269,7 +269,7 @@ dependencies {
     implementation 'com.google.firebase:firebase-perf'
 
     // - pinch and zoom
-    implementation 'com.bogdwellers:pinchtozoom:0.1'
+    implementation 'com.github.MikeOrtiz:TouchImageView:3.1.1'
 
     // Testing
     testImplementation "junit:junit:4.13.2"

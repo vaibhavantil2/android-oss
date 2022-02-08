@@ -67,6 +67,9 @@
         android:layout_height="wrap_content"/>
 
     <androidx.appcompat.widget.AppCompatImageView
+        android:clipChildren="false"
+        android:clipToPadding="false"
+        android:clickable="true"
         android:id="@+id/normalImage"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
@@ -74,16 +77,8 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
-        android:contentDescription="@null"/>
-
-    <com.kickstarter.ui.views.ZoomImageView
-        android:id="@+id/zoomImage"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/normalImage"
-        android:contentDescription="@null"/>
+        android:contentDescription="@null"
+        android:focusable="true" />
 
   </androidx.constraintlayout.widget.ConstraintLayout>
 
