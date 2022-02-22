@@ -5,15 +5,11 @@ import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
 import android.util.Pair
-import android.view.LayoutInflater
-import android.view.Menu
-import android.view.MenuInflater
-import android.view.MenuItem
-import android.view.View
-import android.view.ViewGroup
+import android.view.*
 import android.widget.LinearLayout
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.isGone
+import androidx.fragment.app.Fragment
 import com.jakewharton.rxbinding.view.RxView
 import com.kickstarter.R
 import com.kickstarter.databinding.FragmentNewCardBinding
@@ -21,6 +17,7 @@ import com.kickstarter.databinding.ModalFragmentNewCardBinding
 import com.kickstarter.libs.BaseFragment
 import com.kickstarter.libs.qualifiers.RequiresFragmentViewModel
 import com.kickstarter.libs.rx.transformers.Transformers.observeForUI
+import com.kickstarter.libs.utils.Secrets
 import com.kickstarter.models.Project
 import com.kickstarter.models.StoredCard
 import com.kickstarter.ui.ArgumentsKey
@@ -30,8 +27,11 @@ import com.kickstarter.viewmodels.NewCardFragmentViewModel
 import com.stripe.android.ApiResultCallback
 import com.stripe.android.model.CardParams
 import com.stripe.android.model.Token
+import com.stripe.android.paymentsheet.PaymentSheet
+import com.stripe.android.paymentsheet.PaymentSheetResult
 import com.stripe.android.view.CardInputListener
 import rx.android.schedulers.AndroidSchedulers
+import timber.log.Timber
 
 @RequiresFragmentViewModel(NewCardFragmentViewModel.ViewModel::class)
 class NewCardFragment : BaseFragment<NewCardFragmentViewModel.ViewModel>() {
@@ -43,6 +43,8 @@ class NewCardFragment : BaseFragment<NewCardFragmentViewModel.ViewModel>() {
     private var onCardSavedListener: OnCardSavedListener? = null
     private var fragmentNewCardBinding: FragmentNewCardBinding? = null
     private var modalFragmentNewCardBinding: ModalFragmentNewCardBinding? = null
+    private lateinit var paymentSheet: PaymentSheet
+
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
         super.onCreateView(inflater, container, savedInstanceState)
@@ -55,8 +57,8 @@ class NewCardFragment : BaseFragment<NewCardFragmentViewModel.ViewModel>() {
         return fragmentNewCardBinding?.root
     }
 
-    override fun onActivityCreated(savedInstanceState: Bundle?) {
-        super.onActivityCreated(savedInstanceState)
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
         (activity as AppCompatActivity).setSupportActionBar(fragmentNewCardBinding?.formNewCardLayout?.newCardToolbar)
         setHasOptionsMenu(true)
 
@@ -152,6 +154,41 @@ class NewCardFragment : BaseFragment<NewCardFragmentViewModel.ViewModel>() {
         fragmentNewCardBinding?.formNewCardLayout?.postalCode?.onChange { this.viewModel.inputs.postalCode(it) }
         addListeners()
         fragmentNewCardBinding?.formNewCardLayout?.cardholderName?.requestFocus()
+
+        presentPaymentSheet()
+    }
+
+    fun presentPaymentSheet() {
+        // TODO: we were not using previously setupIntents, just cardParams and card token generated with the cardParams
+        // TODO: do we need to change our current implementation to use setup Intents?
+        // TODO: if so, how to create a setup Intent? I assume we need to call some endpoint on the backend to fetch/create? (PLEDGE FLOW).
+        // TODO: if so, storage and show the saved payment methods? what should be the strategy there, Can the PaymentSheet be presented without SetupIntent.?? (SAVE PAYMENT METHOD FLOW ON USER ACCOUNT)
+        val stripe = this.viewModel.environment.stripe()
+        // stripe.onSetupResult() ??
+
+        paymentSheet = PaymentSheet(this as Fragment, ::onPaymentSheetResult)
+        paymentSheet.presentWithSetupIntent(
+            // TODO  How to get the setupIntentClientSecret? I assume we will need to call some backend endpoint
+            setupIntentClientSecret= Secrets.StripePublishableKey.PRODUCTION,
+            PaymentSheet.Configuration(
+                merchantDisplayName = "Kickstarter",
+                allowsDelayedPaymentMethods = true
+            )
+        )
+    }
+
+    fun onPaymentSheetResult(paymentSheetResult: PaymentSheetResult) {
+        when(paymentSheetResult) {
+            is PaymentSheetResult.Canceled -> {
+                Timber.d("${this.javaClass.canonicalName} :onPaymentSheetResult -> PaymentSheetResult.Canceled")
+            }
+            is PaymentSheetResult.Failed -> {
+                Timber.d("${this.javaClass.canonicalName} :onPaymentSheetResult -> PaymentSheetResult.Failed with error ${paymentSheetResult.error}")
+            }
+            is PaymentSheetResult.Completed -> {
+                Timber.d("${this.javaClass.canonicalName} :onPaymentSheetResult -> PaymentSheetResult.Completed")
+            }
+        }
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
