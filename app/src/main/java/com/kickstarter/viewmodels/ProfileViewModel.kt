@@ -6,11 +6,11 @@ import com.kickstarter.libs.ApiPaginator
 import com.kickstarter.libs.CurrentUserType
 import com.kickstarter.libs.Environment
 import com.kickstarter.libs.ExperimentsClientType
-import com.kickstarter.libs.models.OptimizelyFeature
 import com.kickstarter.libs.rx.transformers.Transformers.neverError
 import com.kickstarter.libs.utils.EventContextValues
-import com.kickstarter.libs.utils.IntegerUtils
 import com.kickstarter.libs.utils.NumberUtils
+import com.kickstarter.libs.utils.extensions.isNonZero
+import com.kickstarter.libs.utils.extensions.isZero
 import com.kickstarter.models.Project
 import com.kickstarter.services.ApiClientType
 import com.kickstarter.services.DiscoveryParams
@@ -77,7 +77,7 @@ interface ProfileViewModel {
         fun startMessageThreadsActivity(): Observable<Void>
 
         /** Emits when we should start the [com.kickstarter.ui.activities.ProjectActivity].  */
-        fun startProjectActivity(): Observable<Pair<Project, Boolean>>
+        fun startProjectActivity(): Observable<Project>
 
         /** Emits the user name to be displayed.  */
         fun userNameTextViewText(): Observable<String>
@@ -104,12 +104,11 @@ interface ProfileViewModel {
         private val isFetchingProjects = BehaviorSubject.create<Boolean>()
         private val projectList: Observable<List<Project>>
         private val resumeDiscoveryActivity: Observable<Void>
-        private val startProjectActivity: Observable<Pair<Project, Boolean>>
         private val startMessageThreadsActivity: Observable<Void>
         private val userNameTextViewText: Observable<String>
 
-        val inputs: ProfileViewModel.Inputs = this
-        val outputs: ProfileViewModel.Outputs = this
+        val inputs: Inputs = this
+        val outputs: Outputs = this
 
         init {
 
@@ -127,7 +126,7 @@ interface ProfileViewModel {
             val paginator = ApiPaginator.builder<Project, DiscoverEnvelope, DiscoveryParams>()
                 .nextPage(this.nextPage)
                 .envelopeToListOfData { it.projects() }
-                .envelopeToMoreUrl { env -> env.urls().api().moreProjects() }
+                .envelopeToMoreUrl { env -> env.urls()?.api()?.moreProjects() }
                 .loadWithParams { this.client.fetchProjects(params) }
                 .loadWithPaginationPath { this.client.fetchProjects(it) }
                 .build()
@@ -141,21 +140,21 @@ interface ProfileViewModel {
             this.avatarImageViewUrl = loggedInUser.map { u -> u.avatar().medium() }
 
             this.backedCountTextViewHidden = loggedInUser
-                .map { u -> IntegerUtils.isZero(u.backedProjectsCount()) }
+                .map { u -> u.backedProjectsCount().isZero() }
             this.backedTextViewHidden = this.backedCountTextViewHidden
 
             this.backedCountTextViewText = loggedInUser
                 .map<Int> { it.backedProjectsCount() }
-                .filter { IntegerUtils.isNonZero(it) }
+                .filter { it.isNonZero() }
                 .map { NumberUtils.format(it) }
 
             this.createdCountTextViewHidden = loggedInUser
-                .map { u -> IntegerUtils.isZero(u.createdProjectsCount()) }
+                .map { u -> u.createdProjectsCount().isZero() }
             this.createdTextViewHidden = this.createdCountTextViewHidden
 
             this.createdCountTextViewText = loggedInUser
                 .map<Int> { it.createdProjectsCount() }
-                .filter { IntegerUtils.isNonZero(it) }
+                .filter { it.isNonZero() }
                 .map { NumberUtils.format(it) }
 
             this.dividerViewHidden = Observable.combineLatest<Boolean, Boolean, Pair<Boolean, Boolean>>(
@@ -166,13 +165,6 @@ interface ProfileViewModel {
 
             this.projectList = paginator.paginatedData()
             this.resumeDiscoveryActivity = this.exploreProjectsButtonClicked
-
-            val isProfilePageEnabled =
-                Observable.just(this.optimizely.isFeatureEnabled(OptimizelyFeature.Key.PROJECT_PAGE_V2))
-
-            this.startProjectActivity =
-                this.projectCardClicked
-                    .withLatestFrom(isProfilePageEnabled) { projectAndRef, isEnabled -> Pair(projectAndRef, isEnabled) }
 
             this.startMessageThreadsActivity = this.messagesButtonClicked
             this.userNameTextViewText = loggedInUser.map { it.name() }
@@ -216,7 +208,7 @@ interface ProfileViewModel {
 
         override fun resumeDiscoveryActivity() = this.resumeDiscoveryActivity
 
-        override fun startProjectActivity() = this.startProjectActivity
+        override fun startProjectActivity() = this.projectCardClicked
 
         override fun startMessageThreadsActivity() = this.startMessageThreadsActivity
 

@@ -1,12 +1,16 @@
 package com.kickstarter.libs
 
 import com.kickstarter.libs.utils.AnalyticEventsUtils
-import com.kickstarter.libs.utils.BooleanUtils
+import com.kickstarter.libs.utils.ContextPropertyKeyName.COMMENT_BODY
+import com.kickstarter.libs.utils.ContextPropertyKeyName.COMMENT_CHARACTER_COUNT
+import com.kickstarter.libs.utils.ContextPropertyKeyName.COMMENT_ID
+import com.kickstarter.libs.utils.ContextPropertyKeyName.COMMENT_ROOT_ID
 import com.kickstarter.libs.utils.ContextPropertyKeyName.CONTEXT_CTA
 import com.kickstarter.libs.utils.ContextPropertyKeyName.CONTEXT_LOCATION
 import com.kickstarter.libs.utils.ContextPropertyKeyName.CONTEXT_PAGE
 import com.kickstarter.libs.utils.ContextPropertyKeyName.CONTEXT_SECTION
 import com.kickstarter.libs.utils.ContextPropertyKeyName.CONTEXT_TYPE
+import com.kickstarter.libs.utils.ContextPropertyKeyName.PROJECT_UPDATE_ID
 import com.kickstarter.libs.utils.EventContextValues
 import com.kickstarter.libs.utils.EventContextValues.ContextPageName.ACTIVITY_FEED
 import com.kickstarter.libs.utils.EventContextValues.ContextPageName.ADD_ONS
@@ -22,10 +26,13 @@ import com.kickstarter.libs.utils.EventContextValues.ContextPageName.THANKS
 import com.kickstarter.libs.utils.EventContextValues.ContextPageName.TWO_FACTOR_AUTH
 import com.kickstarter.libs.utils.EventContextValues.ContextPageName.UPDATE_PLEDGE
 import com.kickstarter.libs.utils.EventContextValues.ContextTypeName.CREDIT_CARD
+import com.kickstarter.libs.utils.EventContextValues.ContextTypeName.REPLY
+import com.kickstarter.libs.utils.EventContextValues.ContextTypeName.ROOT
 import com.kickstarter.libs.utils.EventContextValues.ContextTypeName.UNWATCH
 import com.kickstarter.libs.utils.EventContextValues.ContextTypeName.WATCH
 import com.kickstarter.libs.utils.EventContextValues.CtaContextName.ADD_ONS_CONTINUE
 import com.kickstarter.libs.utils.EventContextValues.CtaContextName.CAMPAIGN_DETAILS
+import com.kickstarter.libs.utils.EventContextValues.CtaContextName.COMMENT_POST
 import com.kickstarter.libs.utils.EventContextValues.CtaContextName.CREATOR_DETAILS
 import com.kickstarter.libs.utils.EventContextValues.CtaContextName.DISCOVER
 import com.kickstarter.libs.utils.EventContextValues.CtaContextName.DISCOVER_FILTER
@@ -60,6 +67,8 @@ import com.kickstarter.libs.utils.EventName.PAGE_VIEWED
 import com.kickstarter.libs.utils.EventName.VIDEO_PLAYBACK_COMPLETED
 import com.kickstarter.libs.utils.EventName.VIDEO_PLAYBACK_STARTED
 import com.kickstarter.libs.utils.checkoutProperties
+import com.kickstarter.libs.utils.extensions.isNonZero
+import com.kickstarter.libs.utils.extensions.isTrue
 import com.kickstarter.models.Backing
 import com.kickstarter.models.Project
 import com.kickstarter.models.User
@@ -222,11 +231,11 @@ class AnalyticEvents(trackingClients: List<TrackingClientType?>) {
         props[CONTEXT_LOCATION.contextName] = DISCOVER_ADVANCED.contextName
         props[CONTEXT_PAGE.contextName] = DISCOVER.contextName
         props[CONTEXT_TYPE.contextName] = when {
-            BooleanUtils.isTrue(discoveryParams.category()?.isRoot) ||
+            discoveryParams.category()?.isRoot.isTrue() ||
                 discoveryParams.category() != null ||
-                BooleanUtils.isTrue(discoveryParams.staffPicks()) ||
-                BooleanUtils.isTrue(discoveryParams.isAllProjects) -> RESULTS.contextName
-            BooleanUtils.isTrue(discoveryParams.recommended()) -> RECOMMENDED.contextName
+                discoveryParams.staffPicks().isTrue() ||
+                discoveryParams.isAllProjects.isTrue() -> RESULTS.contextName
+            discoveryParams.recommended().isTrue() -> RECOMMENDED.contextName
             else -> ""
         }
 
@@ -259,13 +268,13 @@ class AnalyticEvents(trackingClients: List<TrackingClientType?>) {
         props[CONTEXT_LOCATION.contextName] = DISCOVER_OVERLAY.contextName
         props[CONTEXT_PAGE.contextName] = DISCOVER.contextName
         props[CONTEXT_TYPE.contextName] = when {
-            BooleanUtils.isTrue(discoveryParams.staffPicks()) -> PWL.contextName
-            BooleanUtils.isTrue(discoveryParams.recommended()) -> RECOMMENDED.contextName
-            BooleanUtils.isIntTrue(discoveryParams.starred()) -> WATCHED.contextName
-            BooleanUtils.isIntTrue(discoveryParams.social()) -> SOCIAL.contextName
-            BooleanUtils.isTrue(discoveryParams.category()?.isRoot) -> CATEGORY_NAME.contextName
+            discoveryParams.staffPicks().isTrue() -> PWL.contextName
+            discoveryParams.recommended().isTrue() -> RECOMMENDED.contextName
+            discoveryParams.starred().isNonZero() -> WATCHED.contextName
+            discoveryParams.social().isNonZero() -> SOCIAL.contextName
+            discoveryParams.category()?.isRoot.isTrue() -> CATEGORY_NAME.contextName
             discoveryParams.category() != null -> SUBCATEGORY_NAME.contextName
-            BooleanUtils.isTrue(discoveryParams.isAllProjects) -> ALL.contextName
+            discoveryParams.isAllProjects.isTrue() -> ALL.contextName
             else -> ALL.contextName
         }
         props.putAll(AnalyticEventsUtils.discoveryParamsProperties(discoveryParams))
@@ -480,10 +489,10 @@ class AnalyticEvents(trackingClients: List<TrackingClientType?>) {
      *
      * @param project: The watched or unwatched project.
      */
-    fun trackWatchProjectCTA(project: Project) {
+    fun trackWatchProjectCTA(project: Project, contextPageName: EventContextValues.ContextPageName) {
         val props: HashMap<String, Any> = hashMapOf(CONTEXT_CTA.contextName to WATCH_PROJECT.contextName)
-        props[CONTEXT_TYPE.contextName] = if (project.isStarred) WATCH.contextName else UNWATCH.contextName
-        props[CONTEXT_PAGE.contextName] = PROJECT.contextName
+        props[CONTEXT_TYPE.contextName] = if (project.isStarred()) WATCH.contextName else UNWATCH.contextName
+        props[CONTEXT_PAGE.contextName] = contextPageName.contextName
         props.putAll(AnalyticEventsUtils.projectProperties(project, client.loggedInUser()))
         client.track(CTA_CLICKED.eventName, props)
     }
@@ -595,6 +604,106 @@ class AnalyticEvents(trackingClients: List<TrackingClientType?>) {
         props[CONTEXT_PAGE.contextName] = PROJECT.contextName
         props.putAll(AnalyticEventsUtils.projectProperties(projectData.project(), client.loggedInUser()))
         client.track(CTA_CLICKED.eventName, props)
+    }
+
+    /**
+     * Sends data associated with the comment screen page viewed to segment.
+     * @param project: The current project.
+     * @param projectUpdateId: the update id
+     */
+    fun trackRootCommentPageViewed(project: Project, projectUpdateId: String? = null) {
+        val props: HashMap<String, Any> = HashMap()
+        props.putAll(createCommentPagePropMap(projectUpdateId))
+        props.putAll(AnalyticEventsUtils.projectProperties(project, client.loggedInUser()))
+        client.track(PAGE_VIEWED.eventName, props)
+    }
+
+    /**
+     * Sends data associated with the comment screen page viewed to segment.
+     * @param project: The current project.
+     * @param rootCommentId: The root comment id.
+     * @param projectUpdateId: the update id
+     */
+    fun trackThreadCommentPageViewed(project: Project, rootCommentId: String, projectUpdateId: String? = null) {
+        val props: HashMap<String, Any> = HashMap()
+        props.putAll(createCommentPagePropMap(projectUpdateId))
+        props[COMMENT_ROOT_ID.contextName] = rootCommentId
+        props.putAll(AnalyticEventsUtils.projectProperties(project, client.loggedInUser()))
+        client.track(PAGE_VIEWED.eventName, props)
+    }
+
+    /**
+     * Sends data to the client when reply is clicked on the project comment screen.
+     *
+     * @param project: The current project.
+     * @param commentId: The comment id.
+     * @param comment: The reply.
+     * @param projectUpdateId: the update id
+     */
+    fun trackCommentCTA(project: Project, commentId: String, comment: String, projectUpdateId: String? = null) {
+        val props: HashMap<String, Any> =
+            createCommentPropMap(projectUpdateId, comment)
+        props[CONTEXT_TYPE.contextName] = ROOT.contextName
+        props[COMMENT_ID.contextName] = commentId
+        props.putAll(AnalyticEventsUtils.projectProperties(project, client.loggedInUser()))
+        client.track(CTA_CLICKED.eventName, props)
+    }
+
+    /**
+     * Sends data to the client when reply is clicked on the project root comment screen.
+     *
+     * @param project: The current project.
+     * @param commentReply: The reply.
+     * @param commentId: The comment id.
+     * @param rootCommentId: The root comment id.
+     * @param projectUpdateId: the update id
+     *
+     */
+    fun trackRootCommentReplyCTA(
+        project: Project,
+        commentId: String,
+        commentReply: String,
+        rootCommentId: String,
+        projectUpdateId: String? = null
+    ) {
+        val props: HashMap<String, Any> =
+            createCommentPropMap(projectUpdateId, commentReply)
+
+        props[CONTEXT_TYPE.contextName] = REPLY.contextName
+        props[COMMENT_ID.contextName] = commentId
+        props[COMMENT_ROOT_ID.contextName] = rootCommentId
+
+        props.putAll(AnalyticEventsUtils.projectProperties(project, client.loggedInUser()))
+        client.track(CTA_CLICKED.eventName, props)
+    }
+
+    private fun createCommentPropMap(
+        projectUpdateId: String?,
+        commentReply: String
+    ): HashMap<String, Any> {
+        return hashMapOf<String, Any>(CONTEXT_CTA.contextName to COMMENT_POST.contextName).also { map ->
+            map.putAll(createCommentPagePropMap(projectUpdateId))
+            map[COMMENT_BODY.contextName] = commentReply
+            map[COMMENT_CHARACTER_COUNT.contextName] = commentReply.length
+        }
+    }
+
+    private fun createCommentPagePropMap(
+        projectUpdateId: String?
+    ): HashMap<String, Any> {
+        return hashMapOf<String, Any>().also { map ->
+            map[CONTEXT_PAGE.contextName] = PROJECT.contextName
+            map[CONTEXT_SECTION.contextName] =
+                EventContextValues.ContextSectionName.COMMENTS.contextName
+
+            projectUpdateId?.let {
+                map[CONTEXT_SECTION.contextName] =
+                    EventContextValues.ContextSectionName.UPDATES.contextName
+                map[CONTEXT_LOCATION.contextName] =
+                    EventContextValues.LocationContextName.COMMENTS.contextName
+                map[PROJECT_UPDATE_ID.contextName] = projectUpdateId
+            }
+        }
     }
 
     fun reset() {

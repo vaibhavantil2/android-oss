@@ -1,3 +1,18 @@
+query FetchProjects($first: Int = 15, $cursor: String, $sort: ProjectSort, $backed: Boolean, $recommended: Boolean, $categoryId: String, $starred: Boolean, $staffPicks: Boolean) {
+  projects(first: $first, after:$cursor, sort:$sort, backed:$backed, recommended:$recommended, categoryId: $categoryId, starred:$starred, staffPicks: $staffPicks) {
+    edges {
+      cursor
+      node{
+        ... projectCard
+      }
+    }
+    pageInfo {
+      ... pageInfo
+    }
+    totalCount
+  }
+}
+
 query FetchProject($slug: String!) {
   project(slug: $slug) {
     ... fullProject
@@ -55,6 +70,25 @@ mutation CreateComment($body: String!, $commentableId: ID!, $parentId: ID, $clie
   }
 }
 
+mutation watchProject($id: ID!) {
+  watchProject(input: {id: $id}) {
+    clientMutationId
+    project {
+      ...fullProject
+    }
+  }
+}
+
+mutation unwatchProject($id: ID!) {
+  watchProject: unwatchProject(input: {id: $id}) {
+    clientMutationId
+    project {
+      ...fullProject
+    }
+  }
+}
+
+
 query GetProjectComments($slug: String!, $limit: Int!, $cursor: String) {
   project(slug: $slug) {
     id
@@ -85,5 +119,16 @@ query GetProjectUpdateComments($id: ID!,$limit: Int!, $cursor: String){
   post(id: $id)  {
     id
     ...freeformPost
+  }
+}
+
+query GetRootCategories {
+  rootCategories {
+    ...category
+    subcategories {
+      nodes {
+        ...category
+      }
+    }
   }
 }

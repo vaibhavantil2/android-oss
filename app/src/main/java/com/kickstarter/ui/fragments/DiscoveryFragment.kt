@@ -9,6 +9,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
 import androidx.core.view.isGone
+import androidx.recyclerview.widget.ConcatAdapter
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.jakewharton.rxbinding.view.RxView
 import com.kickstarter.R
@@ -22,6 +23,7 @@ import com.kickstarter.libs.qualifiers.RequiresFragmentViewModel
 import com.kickstarter.libs.rx.transformers.Transformers
 import com.kickstarter.libs.utils.AnimationUtils.crossFadeAndReverse
 import com.kickstarter.libs.utils.TransitionUtils
+import com.kickstarter.libs.utils.ViewUtils
 import com.kickstarter.libs.utils.extensions.getProjectIntent
 import com.kickstarter.models.Activity
 import com.kickstarter.models.Category
@@ -33,11 +35,15 @@ import com.kickstarter.ui.activities.ActivityFeedActivity
 import com.kickstarter.ui.activities.EditorialActivity
 import com.kickstarter.ui.activities.LoginToutActivity
 import com.kickstarter.ui.activities.UpdateActivity
-import com.kickstarter.ui.adapters.DiscoveryAdapter
+import com.kickstarter.ui.adapters.DiscoveryActivitySampleAdapter
+import com.kickstarter.ui.adapters.DiscoveryEditorialAdapter
+import com.kickstarter.ui.adapters.DiscoveryOnboardingAdapter
+import com.kickstarter.ui.adapters.DiscoveryProjectCardAdapter
 import com.kickstarter.ui.data.Editorial
 import com.kickstarter.ui.data.LoginReason
 import com.kickstarter.ui.viewholders.EditorialViewHolder
 import com.kickstarter.viewmodels.DiscoveryFragmentViewModel
+import rx.android.schedulers.AndroidSchedulers
 
 @RequiresFragmentViewModel(DiscoveryFragmentViewModel.ViewModel::class)
 class DiscoveryFragment : BaseFragment<DiscoveryFragmentViewModel.ViewModel>() {
@@ -45,6 +51,8 @@ class DiscoveryFragment : BaseFragment<DiscoveryFragmentViewModel.ViewModel>() {
     private var recyclerViewPaginator: RecyclerViewPaginator? = null
 
     private var binding: FragmentDiscoveryBinding? = null
+    private var discoveryEditorialAdapter: DiscoveryEditorialAdapter? = null
+    private val projectStarConfirmationString = R.string.project_star_confirmation
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
         super.onCreateView(inflater, container, savedInstanceState)
@@ -55,28 +63,34 @@ class DiscoveryFragment : BaseFragment<DiscoveryFragmentViewModel.ViewModel>() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        val discoveryAdapter = DiscoveryAdapter(this.viewModel.inputs)
+        val discoveryActivitySampleAdapter = DiscoveryActivitySampleAdapter(this.viewModel.inputs)
+        val discoveryEditorialAdapter = DiscoveryEditorialAdapter(this.viewModel.inputs)
+        val discoveryOnboardingAdapter = DiscoveryOnboardingAdapter(this.viewModel.inputs)
+        val discoveryProjectCardAdapter = DiscoveryProjectCardAdapter(this.viewModel.inputs)
+
+        val discoveryAdapter = ConcatAdapter(discoveryOnboardingAdapter, discoveryEditorialAdapter, discoveryActivitySampleAdapter, discoveryProjectCardAdapter)
+        this.discoveryEditorialAdapter = discoveryEditorialAdapter
 
         binding?.discoveryRecyclerView?.apply {
             adapter = discoveryAdapter
-            layoutManager = LinearLayoutManager(context)
+            layoutManager = LinearLayoutManager(context, LinearLayoutManager.VERTICAL, false)
             recyclerViewPaginator = RecyclerViewPaginator(
                 this,
                 { this@DiscoveryFragment.viewModel.inputs.nextPage() },
-                this@DiscoveryFragment.viewModel.outputs.isFetchingProjects
+                this@DiscoveryFragment.viewModel.outputs.isFetchingProjects()
             )
         }
 
         binding?.discoverySwipeRefreshLayout?.let {
             SwipeRefresher(
                 this, it, { this.viewModel.inputs.refresh() }
-            ) { this.viewModel.outputs.isFetchingProjects }
+            ) { this.viewModel.outputs.isFetchingProjects() }
         }
 
         this.viewModel.outputs.activity()
             .compose(bindToLifecycle())
             .compose(Transformers.observeForUI())
-            .subscribe { discoveryAdapter.takeActivity(it) }
+            .subscribe { discoveryActivitySampleAdapter.takeActivity(it) }
 
         this.viewModel.outputs.startHeartAnimation()
             .compose(bindToLifecycle())
@@ -87,12 +101,12 @@ class DiscoveryFragment : BaseFragment<DiscoveryFragmentViewModel.ViewModel>() {
         this.viewModel.outputs.projectList()
             .compose(bindToLifecycle())
             .compose(Transformers.observeForUI())
-            .subscribe { discoveryAdapter.takeProjects(it) }
+            .subscribe { discoveryProjectCardAdapter.takeProjects(it) }
 
         this.viewModel.outputs.shouldShowEditorial()
             .compose(bindToLifecycle())
             .compose(Transformers.observeForUI())
-            .subscribe { discoveryAdapter.setShouldShowEditorial(it) }
+            .subscribe { discoveryEditorialAdapter.setShouldShowEditorial(it) }
 
         this.viewModel.outputs.shouldShowEmptySavedView()
             .compose(bindToLifecycle())
@@ -104,7 +118,7 @@ class DiscoveryFragment : BaseFragment<DiscoveryFragmentViewModel.ViewModel>() {
         this.viewModel.outputs.shouldShowOnboardingView()
             .compose(bindToLifecycle())
             .compose(Transformers.observeForUI())
-            .subscribe { discoveryAdapter.setShouldShowOnboardingView(it) }
+            .subscribe { discoveryOnboardingAdapter.setShouldShowOnboardingView(it) }
 
         this.viewModel.outputs.showActivityFeed()
             .compose(bindToLifecycle())
@@ -124,7 +138,7 @@ class DiscoveryFragment : BaseFragment<DiscoveryFragmentViewModel.ViewModel>() {
         this.viewModel.outputs.startProjectActivity()
             .compose(bindToLifecycle())
             .compose(Transformers.observeForUI())
-            .subscribe { startProjectActivity(it.first, it.second, it.third) }
+            .subscribe { startProjectActivity(it.first, it.second) }
 
         this.viewModel.outputs.showLoginTout()
             .compose(bindToLifecycle())
@@ -136,6 +150,24 @@ class DiscoveryFragment : BaseFragment<DiscoveryFragmentViewModel.ViewModel>() {
                 .compose(bindToLifecycle())
                 .subscribe { this.viewModel.inputs.heartContainerClicked() }
         }
+
+        this.viewModel.outputs.startLoginToutActivityToSaveProject()
+            .compose(bindToLifecycle())
+            .observeOn(AndroidSchedulers.mainThread())
+            .subscribe { this.startLoginToutActivity() }
+
+        this.viewModel.outputs.scrollToSavedProjectPosition()
+            .filter { it != -1 }
+            .compose(bindToLifecycle())
+            .observeOn(AndroidSchedulers.mainThread())
+            .subscribe {
+                binding?.discoveryRecyclerView?.smoothScrollToPosition(it)
+            }
+
+        this.viewModel.outputs.showSavedPrompt()
+            .compose(bindToLifecycle())
+            .observeOn(AndroidSchedulers.mainThread())
+            .subscribe { this.showStarToast() }
     }
 
     override fun onPause() {
@@ -158,8 +190,7 @@ class DiscoveryFragment : BaseFragment<DiscoveryFragmentViewModel.ViewModel>() {
     private val editorialImageView: ImageView?
         get() {
             val layoutManager = binding?.discoveryRecyclerView?.layoutManager as? LinearLayoutManager
-            val discoveryAdapter = binding?.discoveryRecyclerView?.adapter as? DiscoveryAdapter
-            if (layoutManager != null && discoveryAdapter != null) {
+            if (layoutManager != null && discoveryEditorialAdapter != null) {
                 for (i in layoutManager.findFirstVisibleItemPosition()..layoutManager.findLastVisibleItemPosition()) {
                     val childView = layoutManager.getChildAt(i)
                     if (childView != null) {
@@ -189,6 +220,10 @@ class DiscoveryFragment : BaseFragment<DiscoveryFragmentViewModel.ViewModel>() {
         startActivity(Intent(activity, ActivityFeedActivity::class.java))
     }
 
+    private fun showStarToast() {
+        ViewUtils.showToastFromTop(requireContext(), getString(this.projectStarConfirmationString), 0, resources.getDimensionPixelSize(R.dimen.grid_8))
+    }
+
     private fun startEditorialActivity(editorial: Editorial) {
         val activity = activity
         // The transition view must be an ImageView
@@ -210,9 +245,9 @@ class DiscoveryFragment : BaseFragment<DiscoveryFragmentViewModel.ViewModel>() {
         }
     }
 
-    private fun startProjectActivity(project: Project, refTag: RefTag, isProjectPageEnabled: Boolean) {
+    private fun startProjectActivity(project: Project, refTag: RefTag) {
         context?.let {
-            val intent = Intent().getProjectIntent(it, isProjectPageEnabled)
+            val intent = Intent().getProjectIntent(it)
                 .putExtra(IntentKey.PROJECT, project)
                 .putExtra(IntentKey.REF_TAG, refTag)
             startActivity(intent)
@@ -234,7 +269,7 @@ class DiscoveryFragment : BaseFragment<DiscoveryFragmentViewModel.ViewModel>() {
         this.viewModel.inputs.refresh()
     }
 
-    fun takeCategories(categories: List<Category?>) {
+    fun takeCategories(categories: List<Category>) {
         this.viewModel.inputs.rootCategories(categories)
     }
 

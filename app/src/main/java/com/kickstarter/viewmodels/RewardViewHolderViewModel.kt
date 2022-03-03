@@ -10,13 +10,13 @@ import com.kickstarter.libs.Environment
 import com.kickstarter.libs.KSCurrency
 import com.kickstarter.libs.rx.transformers.Transformers.combineLatestPair
 import com.kickstarter.libs.rx.transformers.Transformers.takeWhen
-import com.kickstarter.libs.utils.BooleanUtils
 import com.kickstarter.libs.utils.DateTimeUtils
 import com.kickstarter.libs.utils.NumberUtils
 import com.kickstarter.libs.utils.ObjectUtils
 import com.kickstarter.libs.utils.RewardUtils
 import com.kickstarter.libs.utils.RewardViewUtils
 import com.kickstarter.libs.utils.extensions.isBacked
+import com.kickstarter.libs.utils.extensions.negate
 import com.kickstarter.models.Project
 import com.kickstarter.models.Reward
 import com.kickstarter.models.RewardsItem
@@ -253,7 +253,7 @@ interface RewardViewHolderViewModel {
 
             projectAndReward
                 .map { it.first.isLive && RewardUtils.isLimited(it.second) }
-                .map { BooleanUtils.negate(it) }
+                .map { it.negate() }
                 .distinctUntilChanged()
                 .compose(bindToLifecycle())
                 .subscribe(this.remainingIsGone)
@@ -274,7 +274,7 @@ interface RewardViewHolderViewModel {
 
             reward
                 .map { RewardUtils.isItemized(it) }
-                .map { BooleanUtils.negate(it) }
+                .map { it.negate() }
                 .distinctUntilChanged()
                 .compose(bindToLifecycle())
                 .subscribe(this.rewardItemsAreGone)
@@ -301,7 +301,7 @@ interface RewardViewHolderViewModel {
                 .subscribe(this.showFragment)
 
             this.projectDataAndReward
-                .filter { it.first.project().isLive && !it.first.project().isBacking }
+                .filter { it.first.project().isLive && !it.first.project().isBacking() }
                 .compose<Pair<ProjectData, Reward>>(takeWhen(this.rewardClicked))
                 .map { PledgeData.with(PledgeFlowContext.NEW_PLEDGE, it.first, it.second) }
                 .compose(bindToLifecycle())
@@ -349,7 +349,7 @@ interface RewardViewHolderViewModel {
 
             projectAndReward
                 .map { it.first.isLive && RewardUtils.isShippable(it.second) }
-                .map { BooleanUtils.negate(it) }
+                .map { it.negate() }
                 .distinctUntilChanged()
                 .compose(bindToLifecycle())
                 .subscribe(this.shippingSummaryIsGone)

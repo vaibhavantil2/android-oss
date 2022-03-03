@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.util.Pair
+import androidx.core.net.toUri
 import com.kickstarter.KSRobolectricTestCase
 import com.kickstarter.R
 import com.kickstarter.libs.ActivityRequestCodes
@@ -11,6 +12,7 @@ import com.kickstarter.libs.Either
 import com.kickstarter.libs.Environment
 import com.kickstarter.libs.MockCurrentUser
 import com.kickstarter.libs.models.OptimizelyExperiment
+import com.kickstarter.libs.models.OptimizelyFeature
 import com.kickstarter.libs.utils.EventName
 import com.kickstarter.mock.MockExperimentsClientType
 import com.kickstarter.mock.factories.BackingFactory
@@ -23,6 +25,8 @@ import com.kickstarter.mock.factories.UserFactory
 import com.kickstarter.mock.services.MockApolloClient
 import com.kickstarter.models.Backing
 import com.kickstarter.models.Project
+import com.kickstarter.models.Urls
+import com.kickstarter.models.Web
 import com.kickstarter.ui.IntentKey
 import com.kickstarter.ui.data.ActivityResult
 import com.kickstarter.ui.data.CheckoutData
@@ -67,21 +71,19 @@ class ProjectPageViewModelTest : KSRobolectricTestCase() {
     private val showShareSheet = TestSubscriber<Pair<String, String>>()
     private val showUpdatePledge = TestSubscriber<Pair<PledgeData, PledgeReason>>()
     private val showUpdatePledgeSuccess = TestSubscriber<Void>()
-    private val startCampaignWebViewActivity = TestSubscriber<ProjectData>()
     private val startRootCommentsActivity = TestSubscriber<Pair<Project, ProjectData>>()
     private val startRootCommentsForCommentsThreadActivity = TestSubscriber<Pair<String, Pair<Project, ProjectData>>>()
     private val startProjectUpdateActivity = TestSubscriber< Pair<Pair<String, Boolean>, Pair<Project, ProjectData>>>()
     private val startProjectUpdateToRepliesDeepLinkActivity = TestSubscriber<Pair<Pair<String, String>, Pair<Project, ProjectData>>>()
     private val startLoginToutActivity = TestSubscriber<Void>()
     private val startMessagesActivity = TestSubscriber<Project>()
-    private val startProjectUpdatesActivity = TestSubscriber<Pair<Project, ProjectData>>()
     private val startThanksActivity = TestSubscriber<Pair<CheckoutData, PledgeData>>()
     private val startVideoActivity = TestSubscriber<Project>()
     private val updateFragments = TestSubscriber<ProjectData>()
     private val projectPhoto = TestSubscriber<String>()
     private val playButtonIsVisible = TestSubscriber<Boolean>()
     private val backingViewGroupIsVisible = TestSubscriber<Boolean>()
-    private val updateEnvCommitmentsTabVisibility = TestSubscriber<Boolean>()
+    private val updateTabs = TestSubscriber<Pair<Boolean, Boolean>>()
     private val hideVideoPlayer = TestSubscriber<Boolean>()
 
     private fun setUpEnvironment(environment: Environment) {
@@ -113,7 +115,7 @@ class ProjectPageViewModelTest : KSRobolectricTestCase() {
         this.vm.outputs.showUpdatePledge().subscribe(this.showUpdatePledge)
         this.vm.outputs.showUpdatePledgeSuccess().subscribe(this.showUpdatePledgeSuccess)
         this.vm.outputs.startLoginToutActivity().subscribe(this.startLoginToutActivity)
-        this.vm.outputs.projectData().map { pD -> pD.project().isStarred }.subscribe(this.savedTest)
+        this.vm.outputs.projectData().map { pD -> pD.project().isStarred() }.subscribe(this.savedTest)
         this.vm.outputs.startRootCommentsActivity().subscribe(this.startRootCommentsActivity)
         this.vm.outputs.startProjectUpdateActivity().subscribe(this.startProjectUpdateActivity)
         this.vm.outputs.startMessagesActivity().subscribe(this.startMessagesActivity)
@@ -122,7 +124,7 @@ class ProjectPageViewModelTest : KSRobolectricTestCase() {
         this.vm.outputs.updateFragments().subscribe(this.updateFragments)
         this.vm.outputs.startRootCommentsForCommentsThreadActivity().subscribe(this.startRootCommentsForCommentsThreadActivity)
         this.vm.outputs.startProjectUpdateToRepliesDeepLinkActivity().subscribe(this.startProjectUpdateToRepliesDeepLinkActivity)
-        this.vm.outputs.updateEnvCommitmentsTabVisibility().subscribe(this.updateEnvCommitmentsTabVisibility)
+        this.vm.outputs.updateTabs().subscribe(this.updateTabs)
         this.vm.outputs.projectPhoto().subscribe(this.projectPhoto)
         this.vm.outputs.playButtonIsVisible().subscribe(this.playButtonIsVisible)
         this.vm.outputs.backingViewGroupIsVisible().subscribe(this.backingViewGroupIsVisible)
@@ -271,7 +273,7 @@ class ProjectPageViewModelTest : KSRobolectricTestCase() {
 
         this.vm.intent(Intent().putExtra(IntentKey.PROJECT, initialProject))
 
-        this.updateEnvCommitmentsTabVisibility.assertValues(true)
+        this.updateTabs.assertValue(Pair(false, false))
     }
 
     @Test
@@ -287,8 +289,57 @@ class ProjectPageViewModelTest : KSRobolectricTestCase() {
 
         this.vm.intent(Intent().putExtra(IntentKey.PROJECT, initialProject))
 
-        this.updateEnvCommitmentsTabVisibility.assertValues(false)
+        this.updateTabs.assertValue(Pair(false, true))
     }
+
+    @Test
+    fun testUIOutputs_whenFetchProjectWithEnvCommitmentAndStoryTabFFDisabled() {
+        val initialProject = ProjectFactory.project()
+        val refreshedProject = ProjectFactory.project()
+        val mockExperimentsClientType: MockExperimentsClientType =
+            object : MockExperimentsClientType() {
+                override fun isFeatureEnabled(feature: OptimizelyFeature.Key): Boolean {
+                    return false
+                }
+            }
+
+        val environment = environment()
+            .toBuilder()
+            .optimizely(mockExperimentsClientType)
+            .apolloClient(apiClientWithSuccessFetchingProject(refreshedProject))
+            .build()
+
+        setUpEnvironment(environment)
+
+        this.vm.intent(Intent().putExtra(IntentKey.PROJECT, initialProject))
+
+        this.updateTabs.assertValue(Pair(false, true))
+    }
+
+    @Test
+    fun testUIOutputs_whenFetchProjectWithEnvCommitmentAndStoryTabFFEnabled() {
+        val initialProject = ProjectFactory.project()
+        val refreshedProject = ProjectFactory.project()
+        val mockExperimentsClientType: MockExperimentsClientType =
+            object : MockExperimentsClientType() {
+                override fun isFeatureEnabled(feature: OptimizelyFeature.Key): Boolean {
+                    return true
+                }
+            }
+
+        val environment = environment()
+            .toBuilder()
+            .optimizely(mockExperimentsClientType)
+            .apolloClient(apiClientWithSuccessFetchingProject(refreshedProject))
+            .build()
+
+        setUpEnvironment(environment)
+
+        this.vm.intent(Intent().putExtra(IntentKey.PROJECT, initialProject))
+
+        this.updateTabs.assertValue(Pair(true, true))
+    }
+
     @Test
     fun testUIOutputs_whenFetchProjectFromIntent_isUnsuccessful() {
         var error = true
@@ -357,6 +408,40 @@ class ProjectPageViewModelTest : KSRobolectricTestCase() {
         this.reloadProgressBarIsGone.assertValues(false, true)
         this.updateFragments.assertValue(ProjectDataFactory.project(project))
         this.segmentTrack.assertValue(EventName.PAGE_VIEWED.eventName)
+    }
+
+    @Test
+    fun testUIOutputs_whenSaveProjectFromDeepLink_isSuccessful() {
+
+        val currentUser = MockCurrentUser()
+        val project = ProjectFactory.successfulProject()
+        val testScheduler = TestScheduler()
+
+        setUpEnvironment(
+            environment().toBuilder()
+                .currentUser(currentUser)
+                .apolloClient(object : MockApolloClient() {
+                    override fun getProject(param: String): Observable<Project> {
+                        return Observable.just(project)
+                    }
+                })
+                .scheduler(testScheduler).build()
+        )
+
+        // Start the view model with a project.
+        val intent = deepLinkIntent().apply {
+            putExtra(IntentKey.DEEP_LINK_SCREEN_PROJECT_SAVE, true)
+            putExtra(IntentKey.SAVE_FLAG_VALUE, true)
+        }
+        currentUser.refresh(UserFactory.user())
+        this.vm.intent(intent)
+
+        testScheduler.advanceTimeBy(3, TimeUnit.SECONDS)
+
+        // The project should be saved, and a save prompt should NOT be shown.
+        this.savedTest.assertValues(false, true)
+        this.heartDrawableId.assertValues(R.drawable.icon__heart_outline, R.drawable.icon__heart)
+        this.showSavedPromptTest.assertValueCount(0)
     }
 
     @Test
@@ -470,7 +555,7 @@ class ProjectPageViewModelTest : KSRobolectricTestCase() {
         val slug = "best-project-2k19"
         val projectUrl = "https://www.kck.str/projects/" + creator.id().toString() + "/" + slug
 
-        val webUrls = Project.Urls.Web.builder()
+        val webUrls = Web.builder()
             .project(projectUrl)
             .rewards("$projectUrl/rewards")
             .updates("$projectUrl/posts")
@@ -479,7 +564,7 @@ class ProjectPageViewModelTest : KSRobolectricTestCase() {
         val project = ProjectFactory.project()
             .toBuilder()
             .name("Best Project 2K19")
-            .urls(Project.Urls.builder().web(webUrls).build())
+            .urls(Urls.builder().web(webUrls).build())
             .build()
 
         setUpEnvironment(environment())
@@ -522,6 +607,10 @@ class ProjectPageViewModelTest : KSRobolectricTestCase() {
         this.savedTest.assertValues(false, true)
         this.heartDrawableId.assertValues(R.drawable.icon__heart_outline, R.drawable.icon__heart)
         this.showSavedPromptTest.assertValueCount(0)
+        this.projectData.assertValues(
+            ProjectDataFactory.project(project),
+            ProjectDataFactory.project(project.toBuilder().isStarred(true).build())
+        )
     }
 
     @Test
@@ -550,6 +639,37 @@ class ProjectPageViewModelTest : KSRobolectricTestCase() {
     }
 
     @Test
+    fun testUnStarProjectThatIsAlmostCompleted() {
+        val project = ProjectFactory.almostCompletedProject().toBuilder().isStarred(true).build()
+
+        val currentUser = MockCurrentUser()
+        val environment = environment().toBuilder()
+            .currentUser(currentUser)
+            .build()
+        environment.currentConfig().config(ConfigFactory.config())
+
+        setUpEnvironment(environment)
+
+        // Start the view model with an almost completed project
+        this.vm.intent(Intent().putExtra(IntentKey.PROJECT, project))
+
+        // Login
+        currentUser.refresh(UserFactory.user())
+
+        // Star the project
+        this.vm.inputs.heartButtonClicked()
+
+        // The project should be saved, and a save prompt should NOT be shown.
+        this.savedTest.assertValues(true, false)
+        this.heartDrawableId.assertValues(R.drawable.icon__heart, R.drawable.icon__heart_outline)
+        this.showSavedPromptTest.assertValueCount(0)
+        this.projectData.assertValues(
+            ProjectDataFactory.project(project),
+            ProjectDataFactory.project(project.toBuilder().isStarred(false).build())
+        )
+    }
+
+    @Test
     fun testStartCommentsActivityFromDeepLink() {
         val project = ProjectFactory.project()
         val projectData = ProjectDataFactory.project(project)
@@ -569,7 +689,7 @@ class ProjectPageViewModelTest : KSRobolectricTestCase() {
 
         this.vm.intent(intent)
 
-        testScheduler.advanceTimeBy(2, TimeUnit.SECONDS)
+        testScheduler.advanceTimeBy(3, TimeUnit.SECONDS)
 
         this.startRootCommentsActivity.assertValues(projectAndData)
     }
@@ -597,7 +717,7 @@ class ProjectPageViewModelTest : KSRobolectricTestCase() {
 
         this.vm.intent(intent)
 
-        testScheduler.advanceTimeBy(2, TimeUnit.SECONDS)
+        testScheduler.advanceTimeBy(3, TimeUnit.SECONDS)
 
         this.startRootCommentsForCommentsThreadActivity.assertValues(deepLinkDate)
     }
@@ -624,7 +744,7 @@ class ProjectPageViewModelTest : KSRobolectricTestCase() {
 
         this.vm.intent(intent)
 
-        testScheduler.advanceTimeBy(2, TimeUnit.SECONDS)
+        testScheduler.advanceTimeBy(3, TimeUnit.SECONDS)
 
         this.startProjectUpdateActivity.assertValues(updateProjectAndData)
     }
@@ -653,7 +773,7 @@ class ProjectPageViewModelTest : KSRobolectricTestCase() {
 
         this.vm.intent(intent)
 
-        testScheduler.advanceTimeBy(2, TimeUnit.SECONDS)
+        testScheduler.advanceTimeBy(3, TimeUnit.SECONDS)
 
         this.startProjectUpdateToRepliesDeepLinkActivity.assertValues(updateProjectAndData)
     }
@@ -681,7 +801,7 @@ class ProjectPageViewModelTest : KSRobolectricTestCase() {
 
         this.vm.intent(intent)
 
-        testScheduler.advanceTimeBy(2, TimeUnit.SECONDS)
+        testScheduler.advanceTimeBy(3, TimeUnit.SECONDS)
 
         this.startProjectUpdateActivity.assertValues(updateProjectAndData)
     }
@@ -1469,7 +1589,9 @@ class ProjectPageViewModelTest : KSRobolectricTestCase() {
     @Test
     fun testShowUpdatePledgeSuccess_whenUpdatingPayment() {
         val initialBackedProject = ProjectFactory.backedProject()
-        val refreshedProject = ProjectFactory.backedProject()
+        val refreshedProject = initialBackedProject.toBuilder()
+            .id(9L)
+            .build()
         val environment = environment()
             .toBuilder()
             .apolloClient(apiClientWithSuccessFetchingProjectFromSlug(refreshedProject))
@@ -1499,7 +1621,9 @@ class ProjectPageViewModelTest : KSRobolectricTestCase() {
     @Test
     fun testShowUpdatePledgeSuccess_whenUpdatingPledge() {
         val initialBackedProject = ProjectFactory.backedProject()
-        val refreshedProject = ProjectFactory.backedProject()
+        val refreshedProject = initialBackedProject.toBuilder()
+            .id(9L)
+            .build()
         val environment = environment()
             .toBuilder()
             .apolloClient(apiClientWithSuccessFetchingProjectFromSlug(refreshedProject))
@@ -1635,6 +1759,39 @@ class ProjectPageViewModelTest : KSRobolectricTestCase() {
                 return Observable.just(refreshedProject)
             }
         }
+    }
+
+    @Test
+    fun testUIOutputs_whenSaveProjectFromDeepLinkURI_isSuccessful() {
+
+        val currentUser = MockCurrentUser()
+        val project = ProjectFactory.successfulProject()
+        val testScheduler = TestScheduler()
+
+        setUpEnvironment(
+            environment().toBuilder()
+                .currentUser(currentUser)
+                .apolloClient(object : MockApolloClient() {
+                    override fun getProject(param: String): Observable<Project> {
+                        return Observable.just(project)
+                    }
+                })
+                .scheduler(testScheduler).build()
+        )
+
+        // Start the view model with a project.
+        val intent = Intent().apply {
+            data = "ksr://www.kickstarter.com/projects/1186238668/skull-graphic-tee?save=true".toUri()
+        }
+        currentUser.refresh(UserFactory.user())
+        this.vm.intent(intent)
+
+        testScheduler.advanceTimeBy(3, TimeUnit.SECONDS)
+
+        // The project should be saved, and a save prompt should NOT be shown.
+        this.savedTest.assertValues(false, true)
+        this.heartDrawableId.assertValues(R.drawable.icon__heart_outline, R.drawable.icon__heart)
+        this.showSavedPromptTest.assertValueCount(0)
     }
 
     private fun deepLinkIntent(): Intent {

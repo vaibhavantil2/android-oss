@@ -3,6 +3,7 @@ package com.kickstarter.ui.activities
 import android.content.DialogInterface
 import android.content.Intent
 import android.os.Bundle
+import android.util.Pair
 import androidx.appcompat.app.AlertDialog
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -13,6 +14,7 @@ import com.kickstarter.libs.KSString
 import com.kickstarter.libs.RefTag
 import com.kickstarter.libs.qualifiers.RequiresActivityViewModel
 import com.kickstarter.libs.rx.transformers.Transformers
+import com.kickstarter.libs.utils.ViewUtils
 import com.kickstarter.libs.utils.extensions.getProjectIntent
 import com.kickstarter.models.Project
 import com.kickstarter.services.DiscoveryParams
@@ -20,12 +22,14 @@ import com.kickstarter.ui.IntentKey
 import com.kickstarter.ui.adapters.ThanksAdapter
 import com.kickstarter.ui.extensions.showRatingDialogWidget
 import com.kickstarter.viewmodels.ThanksViewModel
+import rx.android.schedulers.AndroidSchedulers
 import java.util.concurrent.TimeUnit
 
 @RequiresActivityViewModel(ThanksViewModel.ViewModel::class)
 class ThanksActivity : BaseActivity<ThanksViewModel.ViewModel>() {
     private lateinit var ksString: KSString
     private lateinit var binding: ThanksLayoutBinding
+    private val projectStarConfirmationString = R.string.project_star_confirmation
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -89,6 +93,15 @@ class ThanksActivity : BaseActivity<ThanksViewModel.ViewModel>() {
             .subscribe { startProjectActivity(it) }
 
         binding.thanksToolbar.closeButton.setOnClickListener { closeButtonClick() }
+
+        this.viewModel.outputs.showSavedPrompt()
+            .compose(bindToLifecycle())
+            .observeOn(AndroidSchedulers.mainThread())
+            .subscribe { this.showStarToast() }
+    }
+
+    private fun showStarToast() {
+        ViewUtils.showToastFromTop(this, getString(this.projectStarConfirmationString), 0, resources.getDimensionPixelSize(R.dimen.grid_8))
     }
 
     override fun onDestroy() {
@@ -129,8 +142,8 @@ class ThanksActivity : BaseActivity<ThanksViewModel.ViewModel>() {
         startActivity(intent)
     }
 
-    private fun startProjectActivity(projectAndRefTagAndIsFfEnabled: Triple<Project, RefTag, Boolean>) {
-        val intent = Intent().getProjectIntent(this, projectAndRefTagAndIsFfEnabled.third)
+    private fun startProjectActivity(projectAndRefTagAndIsFfEnabled: Pair<Project, RefTag>) {
+        val intent = Intent().getProjectIntent(this)
             .putExtra(IntentKey.PROJECT, projectAndRefTagAndIsFfEnabled.first)
             .putExtra(IntentKey.REF_TAG, projectAndRefTagAndIsFfEnabled.second)
         startActivityWithTransition(intent, R.anim.slide_in_right, R.anim.fade_out_slide_out_left)

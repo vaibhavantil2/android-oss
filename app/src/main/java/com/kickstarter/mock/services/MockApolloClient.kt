@@ -8,16 +8,19 @@ import UpdateUserEmailMutation
 import UpdateUserPasswordMutation
 import UserPrivacyQuery
 import com.kickstarter.mock.factories.BackingFactory
+import com.kickstarter.mock.factories.CategoryFactory
 import com.kickstarter.mock.factories.CheckoutFactory
 import com.kickstarter.mock.factories.CommentEnvelopeFactory
 import com.kickstarter.mock.factories.CommentFactory
 import com.kickstarter.mock.factories.CreatorDetailsFactory
+import com.kickstarter.mock.factories.DiscoverEnvelopeFactory
 import com.kickstarter.mock.factories.ErroredBackingFactory
 import com.kickstarter.mock.factories.PageInfoEnvelopeFactory
 import com.kickstarter.mock.factories.ProjectFactory
 import com.kickstarter.mock.factories.RewardFactory
 import com.kickstarter.mock.factories.StoredCardFactory
 import com.kickstarter.models.Backing
+import com.kickstarter.models.Category
 import com.kickstarter.models.Checkout
 import com.kickstarter.models.Comment
 import com.kickstarter.models.CreatorDetails
@@ -28,6 +31,8 @@ import com.kickstarter.models.Reward
 import com.kickstarter.models.StoredCard
 import com.kickstarter.models.User
 import com.kickstarter.services.ApolloClientType
+import com.kickstarter.services.DiscoveryParams
+import com.kickstarter.services.apiresponses.DiscoverEnvelope
 import com.kickstarter.services.apiresponses.commentresponse.CommentEnvelope
 import com.kickstarter.services.mutations.CreateBackingData
 import com.kickstarter.services.mutations.PostCommentData
@@ -44,11 +49,11 @@ open class MockApolloClient : ApolloClientType {
     }
 
     override fun getProject(project: Project): Observable<Project> {
-        return return Observable.just(project)
+        return Observable.just(project)
     }
 
     override fun getProject(slug: String): Observable<Project> {
-        return return Observable.just(
+        return Observable.just(
             ProjectFactory.project()
                 .toBuilder()
                 .slug(slug)
@@ -56,9 +61,61 @@ open class MockApolloClient : ApolloClientType {
         )
     }
 
+    override fun getProjects(discoveryParams: DiscoveryParams, cursor: String?): Observable<DiscoverEnvelope> {
+        return Observable.just(
+            DiscoverEnvelope
+                .builder()
+                .projects(
+                    listOf(
+                        ProjectFactory.project(),
+                        ProjectFactory.allTheWayProject(),
+                        ProjectFactory.successfulProject()
+                    )
+                )
+                .urls(
+                    DiscoverEnvelope.UrlsEnvelope
+                        .builder()
+                        .api(
+                            DiscoverEnvelope.UrlsEnvelope.ApiEnvelope
+                                .builder()
+                                .moreProjects("http://more.projects.please")
+                                .build()
+                        )
+                        .build()
+                )
+                .stats(
+                    DiscoverEnvelope.StatsEnvelope
+                        .builder()
+                        .count(10)
+                        .build()
+                )
+                .build()
+        )
+    }
+
+    override fun getProjects(isMember: Boolean): Observable<DiscoverEnvelope> {
+        return Observable.just(DiscoverEnvelopeFactory.discoverEnvelope(emptyList()))
+    }
+
+    override fun fetchCategories(): Observable<List<Category>> {
+        return Observable.just(CategoryFactory.rootCategories())
+    }
+
+    override fun fetchCategory(param: String): Observable<Category?> {
+        return Observable.just(CategoryFactory.musicCategory())
+    }
+
     override fun getProjectAddOns(slug: String, location: Location): Observable<List<Reward>> {
         val reward = RewardFactory.reward().toBuilder().isAddOn(true).quantity(2).build()
         return Observable.just(listOf(reward, reward))
+    }
+
+    override fun watchProject(project: Project): Observable<Project> {
+        return Observable.just(project.toBuilder().isStarred(true).build())
+    }
+
+    override fun unWatchProject(project: Project): Observable<Project> {
+        return Observable.just(project.toBuilder().isStarred(false).build())
     }
 
     override fun cancelBacking(backing: Backing, note: String): Observable<Any> {

@@ -19,7 +19,6 @@ import com.kickstarter.libs.rx.transformers.Transformers.takePairWhen
 import com.kickstarter.libs.rx.transformers.Transformers.takeWhen
 import com.kickstarter.libs.rx.transformers.Transformers.values
 import com.kickstarter.libs.rx.transformers.Transformers.zipPair
-import com.kickstarter.libs.utils.BooleanUtils
 import com.kickstarter.libs.utils.DateTimeUtils
 import com.kickstarter.libs.utils.ExperimentData
 import com.kickstarter.libs.utils.NumberUtils
@@ -28,6 +27,9 @@ import com.kickstarter.libs.utils.ProjectViewUtils
 import com.kickstarter.libs.utils.RefTagUtils
 import com.kickstarter.libs.utils.RewardUtils
 import com.kickstarter.libs.utils.extensions.acceptedCardType
+import com.kickstarter.libs.utils.extensions.isFalse
+import com.kickstarter.libs.utils.extensions.isTrue
+import com.kickstarter.libs.utils.extensions.negate
 import com.kickstarter.libs.utils.extensions.parseToDouble
 import com.kickstarter.models.Backing
 import com.kickstarter.models.Checkout
@@ -476,6 +478,7 @@ interface PledgeFragmentViewModel {
 
             val pledgeReason = arguments()
                 .map { it.getSerializable(ArgumentsKey.PLEDGE_PLEDGE_REASON) as PledgeReason }
+                .distinctUntilChanged()
 
             val updatingPayment = pledgeReason
                 .map { it == PledgeReason.UPDATE_PAYMENT || it == PledgeReason.FIX_PLEDGE }
@@ -693,7 +696,7 @@ interface PledgeFragmentViewModel {
 
             val initialAmount = rewardMinimum
                 .compose<Pair<Double, Boolean>>(combineLatestPair(updatingPaymentOrUpdatingPledge))
-                .filter { BooleanUtils.isFalse(it.second) }
+                .filter { it.second.isFalse() }
                 .map { it.first }
 
             // - For no Reward the amount of the RW and the bonus amount are the same value
@@ -805,7 +808,7 @@ interface PledgeFragmentViewModel {
                 .filter { ObjectUtils.isNotNull(it) }
                 .map { requireNotNull(it) }
                 .compose<Pair<ShippingRule, PledgeReason>>(combineLatestPair(pledgeReason))
-                .filter { it.second == PledgeReason.PLEDGE || it.second == PledgeReason.UPDATE_REWARD }
+                .filter { it.second == PledgeReason.PLEDGE || it.second == PledgeReason.UPDATE_REWARD || it.second == PledgeReason.FIX_PLEDGE }
                 .map { it.first }
                 .compose<Pair<ShippingRule, Project>>(combineLatestPair(project))
                 .compose(bindToLifecycle())
@@ -853,9 +856,11 @@ interface PledgeFragmentViewModel {
 
             val isRewardWithShipping = this.selectedReward
                 .filter { RewardUtils.isShippable(it) }
+                .distinctUntilChanged()
 
             val isDigitalRw = this.selectedReward
                 .filter { RewardUtils.isDigital(it) }
+                .distinctUntilChanged()
 
             // - Calculate total for Reward || Rewards + AddOns with Shipping location
             val totalWShipping = Observable.combineLatest(isRewardWithShipping, pledgeAmountHeader, shippingAmount, this.bonusAmount, pledgeReason) {
@@ -909,7 +914,7 @@ interface PledgeFragmentViewModel {
 
             projectAndReward
                 .map { it.first.currency() != it.first.currentCurrency() }
-                .map { BooleanUtils.negate(it) }
+                .map { it.negate() }
                 .distinctUntilChanged()
                 .compose(bindToLifecycle())
                 .subscribe(this.conversionTextViewIsGone)
@@ -1067,7 +1072,7 @@ interface PledgeFragmentViewModel {
 
             val changeDuringUpdatingPledge = validChange
                 .compose<Pair<Boolean, Boolean>>(combineLatestPair(updatingPledge))
-                .filter { BooleanUtils.isTrue(it.second) }
+                .filter { it.second.isTrue() }
                 .map { it.first }
 
             // - Enable/Disable button with shipping
@@ -1092,14 +1097,14 @@ interface PledgeFragmentViewModel {
                 .subscribe(this.continueButtonIsGone)
 
             userIsLoggedIn
-                .map { BooleanUtils.negate(it) }
+                .map { it.negate() }
                 .compose(bindToLifecycle())
                 .subscribe { this.pledgeButtonIsGone.onNext(it) }
 
             val storedCards = BehaviorSubject.create<List<StoredCard>>()
 
             userIsLoggedIn
-                .filter { BooleanUtils.isTrue(it) }
+                .filter { it.isTrue() }
                 .compose<Pair<Boolean, PledgeReason>>(combineLatestPair(pledgeReason))
                 .filter { it.second == PledgeReason.PLEDGE || it.second == PledgeReason.UPDATE_PAYMENT || it.second == PledgeReason.FIX_PLEDGE }
                 .take(1)
@@ -1146,7 +1151,7 @@ interface PledgeFragmentViewModel {
                 .subscribe(this.startLoginToutActivity)
 
             userIsLoggedIn
-                .filter { BooleanUtils.isFalse(it) }
+                .filter { it.isFalse() }
                 .compose<Pair<Boolean, PledgeReason>>(combineLatestPair(pledgeReason))
                 .filter { it.second == PledgeReason.PLEDGE }
                 .compose<Pair<Pair<Boolean, PledgeReason>, Boolean>>(combineLatestPair(totalIsValid))
@@ -1218,7 +1223,7 @@ interface PledgeFragmentViewModel {
                 .startWith(null as String?)
 
             val backingToUpdate = project
-                .filter { it.isBacking }
+                .filter { it.isBacking() }
                 .map { it.backing() }
                 .ofType(Backing::class.java)
                 .distinctUntilChanged()
@@ -1296,7 +1301,7 @@ interface PledgeFragmentViewModel {
                 .compose<Checkout>(takeWhen(this.stripeSetupResultSuccessful.filter { it == StripeIntentResult.Outcome.SUCCEEDED }))
 
             val successfulCheckout = checkoutResult
-                .filter { BooleanUtils.isFalse(it.backing().requiresAction()) }
+                .filter { it.backing().requiresAction().isFalse() }
 
             val successfulBacking = successfulCheckout
                 .map { it.backing() }
@@ -1328,7 +1333,7 @@ interface PledgeFragmentViewModel {
             Observable.merge(createBackingNotification, updateBackingNotification)
                 .compose(values())
                 .map { it.backing() }
-                .filter { BooleanUtils.isTrue(it.requiresAction()) }
+                .filter { it.requiresAction().isTrue() }
                 .map { it.clientSecret() }
                 .compose(bindToLifecycle())
                 .subscribe(this.showSCAFlow)
@@ -1526,7 +1531,7 @@ interface PledgeFragmentViewModel {
         /**
          * If a user has selected addOns, we will know by checking field addOns from pledgeData input
          */
-        private fun hasSelectedAddOns(addOns: java.util.List<Reward>?): Boolean = addOns?.isNotEmpty() ?: false
+        private fun hasSelectedAddOns(addOns: List<Reward>?): Boolean = addOns?.isNotEmpty() ?: false
 
         /**
          * Determine if the user has backed addOns
@@ -1542,7 +1547,7 @@ interface PledgeFragmentViewModel {
         private fun getPledgeAmount(rewards: List<Reward>): Double {
             var totalPledgeAmount = 0.0
             rewards.forEach {
-                totalPledgeAmount += if (RewardUtils.isNoReward(it) && !it.isAddOn) it.minimum() // - Cost of the selected Reward
+                totalPledgeAmount += if (RewardUtils.isNoReward(it) && !it.isAddOn()) it.minimum() // - Cost of the selected Reward
                 else it.quantity()?.let { q -> (q * it.minimum()) } ?: it.minimum() // - Cost of each addOn
             }
             return totalPledgeAmount
@@ -1593,7 +1598,7 @@ interface PledgeFragmentViewModel {
         private fun shippingCostForAddOns(listRw: List<Reward>, selectedRule: ShippingRule): Double {
             var shippingCost = 0.0
             listRw.filter {
-                it.isAddOn
+                it.isAddOn()
             }.map { rw ->
                 rw.shippingRules()?.filter { rule ->
                     rule.location().id() == selectedRule.location().id()
@@ -1622,7 +1627,7 @@ interface PledgeFragmentViewModel {
             val mutableList = mutableListOf<Reward>()
 
             flattenedList.map {
-                if (!it.isAddOn) mutableList.add(it)
+                if (!it.isAddOn()) mutableList.add(it)
                 else {
                     val q = it.quantity() ?: 1
                     for (i in 1..q) {

@@ -8,6 +8,8 @@ import com.kickstarter.mock.factories.ProjectFactory;
 import com.kickstarter.mock.factories.UserFactory;
 import com.kickstarter.models.Project;
 import com.kickstarter.models.User;
+import com.kickstarter.models.Urls;
+import com.kickstarter.models.Web;
 
 import org.junit.Test;
 
@@ -75,7 +77,7 @@ public final class ThanksShareHolderViewModelTest extends KSRobolectricTestCase 
   }
 
   private Project setUpProjectWithWebUrls() {
-    final int creatorId = 15;
+    final Long creatorId = 15L;
     final User creator = UserFactory.creator()
       .toBuilder()
       .id(creatorId)
@@ -83,7 +85,7 @@ public final class ThanksShareHolderViewModelTest extends KSRobolectricTestCase 
     final String slug = "best-project-2k19";
     final String projectUrl = "https://www.kck.str/projects/"  + creator.id() + "/" + slug;
 
-    final Project.Urls.Web webUrls = Project.Urls.Web.builder()
+    final Web webUrls = Web.builder()
       .project(projectUrl)
       .rewards("$projectUrl/rewards")
       .updates("$projectUrl/posts")
@@ -92,7 +94,7 @@ public final class ThanksShareHolderViewModelTest extends KSRobolectricTestCase 
     return ProjectFactory.project()
       .toBuilder()
       .name("Best Project 2K19")
-      .urls(Project.Urls.builder().web(webUrls).build())
+      .urls(Urls.builder().web(webUrls).build())
       .build();
   }
 }

@@ -19,10 +19,12 @@ import com.kickstarter.mock.factories.DiscoverEnvelopeFactory;
 import com.kickstarter.mock.factories.ProjectFactory;
 import com.kickstarter.mock.factories.UserFactory;
 import com.kickstarter.mock.services.MockApiClient;
+import com.kickstarter.mock.services.MockApolloClient;
 import com.kickstarter.models.Activity;
 import com.kickstarter.models.Project;
 import com.kickstarter.models.User;
 import com.kickstarter.services.ApiClientType;
+import com.kickstarter.services.ApolloClientType;
 import com.kickstarter.services.DiscoveryParams;
 import com.kickstarter.services.apiresponses.ActivityEnvelope;
 import com.kickstarter.services.apiresponses.DiscoverEnvelope;
@@ -37,13 +39,16 @@ import java.util.Collections;
 import java.util.List;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
-import kotlin.Triple;
 import rx.Observable;
 import rx.observers.TestSubscriber;
+import rx.schedulers.TestScheduler;
+import rx.subjects.BehaviorSubject;
 
 public class DiscoveryFragmentViewModelTest extends KSRobolectricTestCase {
   private DiscoveryFragmentViewModel.ViewModel vm;
+  final TestScheduler testScheduler = new TestScheduler();
 
   private final TestSubscriber<Activity> activityTest = new TestSubscriber<>();
   private final TestSubscriber<Boolean> hasProjects = new TestSubscriber<>();
@@ -54,9 +59,11 @@ public class DiscoveryFragmentViewModelTest extends KSRobolectricTestCase {
   private final TestSubscriber<Boolean> showActivityFeed = new TestSubscriber<>();
   private final TestSubscriber<Boolean> showLoginTout = new TestSubscriber<>();
   private final TestSubscriber<Editorial> startEditorialActivity = new TestSubscriber<>();
-  private final TestSubscriber<Triple<Project, RefTag, Boolean>> startProjectActivity = new TestSubscriber<>();
-  private final TestSubscriber<Pair<Project, RefTag>> startProjectPageActivity = new TestSubscriber<>();
+  private final TestSubscriber<Pair<Project, RefTag>> startProjectActivity = new TestSubscriber<>();
   private final TestSubscriber<Activity> startUpdateActivity = new TestSubscriber<>();
+  private final TestSubscriber<Project> startLoginToutActivityToSaveProject = new TestSubscriber<>();
+  private final TestSubscriber<Integer> scrollToSavedProjectIndex = new TestSubscriber<>();
+  private final TestSubscriber<Void> showSavedPromptTest = new TestSubscriber<>();
 
   private void setUpEnvironment(final @NonNull Environment environment) {
     this.vm = new DiscoveryFragmentViewModel.ViewModel(environment);
@@ -71,6 +78,9 @@ public class DiscoveryFragmentViewModelTest extends KSRobolectricTestCase {
     this.vm.outputs.startEditorialActivity().subscribe(this.startEditorialActivity);
     this.vm.outputs.startProjectActivity().subscribe(this.startProjectActivity);
     this.vm.outputs.startUpdateActivity().subscribe(this.startUpdateActivity);
+    this.vm.outputs.startLoginToutActivityToSaveProject().subscribe(this.startLoginToutActivityToSaveProject);
+    this.vm.outputs.scrollToSavedProjectPosition().subscribe(this.scrollToSavedProjectIndex);
+    this.vm.outputs.showSavedPrompt().subscribe(this.showSavedPromptTest);
   }
 
   private void setUpInitialHomeAllProjectsParams() {
@@ -266,7 +276,7 @@ public class DiscoveryFragmentViewModelTest extends KSRobolectricTestCase {
     final CurrentUserType currentUser = new MockCurrentUser();
 
     final Environment environment = environment().toBuilder()
-      .apiClient(new MockApiClient())
+      .apolloClient(new MockApolloClient())
       .currentUser(currentUser)
       .build();
 
@@ -296,19 +306,19 @@ public class DiscoveryFragmentViewModelTest extends KSRobolectricTestCase {
   @Test
   public void testShouldShowEmptySavedView_isTrue_whenUserHasNoSavedProjects() {
     final CurrentUserType currentUser = new MockCurrentUser();
-    final ApiClientType apiClient = new MockApiClient() {
+    final ApolloClientType apiClient = new MockApolloClient() {
       @Override
-      public @NonNull Observable<DiscoverEnvelope> fetchProjects(final @NonNull DiscoveryParams params) {
+      public @NonNull Observable<DiscoverEnvelope> getProjects(final @NonNull DiscoveryParams params, final String cursor) {
         if (params.isSavedProjects()) {
           return Observable.just(DiscoverEnvelopeFactory.discoverEnvelope(new ArrayList<>()));
         } else {
-          return super.fetchProjects(params);
+          return super.getProjects(params, cursor);
         }
       }
     };
 
     final Environment environment = environment().toBuilder()
-      .apiClient(apiClient)
+      .apolloClient(apiClient)
       .currentUser(currentUser)
       .build();
 
@@ -382,6 +392,68 @@ public class DiscoveryFragmentViewModelTest extends KSRobolectricTestCase {
   }
 
   @Test
+  public void testLoginToutToSaveProject() {
+    final CurrentUserType currentUser = new MockCurrentUser();
+
+    final Environment environment = environment().toBuilder()
+            .currentUser(currentUser)
+            .scheduler(this.testScheduler)
+            .build();
+
+    setUpEnvironment(environment);
+
+    final BehaviorSubject<List<Pair<Project, DiscoveryParams>>> projects =  BehaviorSubject.create();
+    this.vm.outputs.projectList().subscribe(projects);
+
+    // Initial home all projects params.
+    setUpInitialHomeAllProjectsParams();
+
+    // Click on project save
+    final Project project = projects.getValue().get(0).first;
+    this.vm.inputs.onHeartButtonClicked(project);
+
+    this.startLoginToutActivityToSaveProject.assertValue(project);
+    // Login.
+    final User user = UserFactory.user();
+    currentUser.refresh(user);
+    this.showSavedPromptTest.assertValueCount(1);
+    this.segmentTrack.assertValues(EventName.PAGE_VIEWED.getEventName(), EventName.CTA_CLICKED.getEventName());
+  }
+
+  @Test
+  public void testSaveProject() {
+    final CurrentUserType currentUser = new MockCurrentUser();
+
+    final Environment environment = environment().toBuilder()
+            .currentUser(currentUser)
+            .scheduler(this.testScheduler)
+            .build();
+
+    setUpEnvironment(environment);
+
+    // Login.
+    final User user = UserFactory.user();
+    currentUser.refresh(user);
+
+    final BehaviorSubject<List<Pair<Project, DiscoveryParams>>> projects =  BehaviorSubject.create();
+    this.vm.outputs.projectList().subscribe(projects);
+
+    // Initial home all projects params.
+    setUpInitialHomeAllProjectsParams();
+
+    // Click on project save
+    final Project project = projects.getValue().get(0).first;
+    this.vm.inputs.onHeartButtonClicked(project);
+
+    this.startLoginToutActivityToSaveProject.assertNoValues();
+
+    this.projects.assertValueCount(2);
+    assertTrue(projects.getValue().get(0).first.isStarred());
+    this.showSavedPromptTest.assertValueCount(1);
+    this.segmentTrack.assertValues(EventName.PAGE_VIEWED.getEventName(), EventName.CTA_CLICKED.getEventName());
+  }
+
+  @Test
   public void testShowLoginTout() {
     setUpEnvironment(environment());
 
@@ -424,9 +496,8 @@ public class DiscoveryFragmentViewModelTest extends KSRobolectricTestCase {
     this.vm.inputs.projectCardViewHolderClicked(project);
 
     this.startProjectActivity.assertValueCount(1);
-    assertFalse(this.startProjectActivity.getOnNextEvents().get(0).getThird());
-    assertEquals(this.startProjectActivity.getOnNextEvents().get(0).getFirst(), project);
-    assertEquals(this.startProjectActivity.getOnNextEvents().get(0).getSecond(), RefTag.collection(518));
+    assertEquals(this.startProjectActivity.getOnNextEvents().get(0).first, project);
+    assertEquals(this.startProjectActivity.getOnNextEvents().get(0).second, RefTag.collection(518));
 
     this.segmentTrack.assertValues(EventName.PAGE_VIEWED.getEventName(), EventName.CARD_CLICKED.getEventName(), EventName.CTA_CLICKED.getEventName());
   }
@@ -457,9 +528,8 @@ public class DiscoveryFragmentViewModelTest extends KSRobolectricTestCase {
 
 
     this.startProjectActivity.assertValueCount(1);
-    assertTrue(this.startProjectActivity.getOnNextEvents().get(0).getThird());
-    assertEquals(this.startProjectActivity.getOnNextEvents().get(0).getFirst(), project);
-    assertEquals(this.startProjectActivity.getOnNextEvents().get(0).getSecond(), RefTag.collection(518));
+    assertEquals(this.startProjectActivity.getOnNextEvents().get(0).first, project);
+    assertEquals(this.startProjectActivity.getOnNextEvents().get(0).second, RefTag.collection(518));
 
     this.segmentTrack.assertValues(EventName.PAGE_VIEWED.getEventName(), EventName.CARD_CLICKED.getEventName(), EventName.CTA_CLICKED.getEventName());
   }
@@ -476,9 +546,8 @@ public class DiscoveryFragmentViewModelTest extends KSRobolectricTestCase {
     this.vm.inputs.projectCardViewHolderClicked(project);
 
     this.startProjectActivity.assertValueCount(1);
-    assertFalse(this.startProjectActivity.getOnNextEvents().get(0).getThird());
-    assertEquals(this.startProjectActivity.getOnNextEvents().get(0).getFirst(), project);
-    assertEquals(this.startProjectActivity.getOnNextEvents().get(0).getSecond(), RefTag.discovery());
+    assertEquals(this.startProjectActivity.getOnNextEvents().get(0).first, project);
+    assertEquals(this.startProjectActivity.getOnNextEvents().get(0).second, RefTag.discovery());
     this.segmentTrack.assertValues(EventName.PAGE_VIEWED.getEventName(), EventName.CARD_CLICKED.getEventName(), EventName.CTA_CLICKED.getEventName());
   }
 
@@ -502,9 +571,8 @@ public class DiscoveryFragmentViewModelTest extends KSRobolectricTestCase {
     this.vm.inputs.projectCardViewHolderClicked(project);
 
     this.startProjectActivity.assertValueCount(1);
-    assertTrue(this.startProjectActivity.getOnNextEvents().get(0).getThird());
-    assertEquals(this.startProjectActivity.getOnNextEvents().get(0).getFirst(), project);
-    assertEquals(this.startProjectActivity.getOnNextEvents().get(0).getSecond(), RefTag.discovery());
+    assertEquals(this.startProjectActivity.getOnNextEvents().get(0).first, project);
+    assertEquals(this.startProjectActivity.getOnNextEvents().get(0).second, RefTag.discovery());
     this.segmentTrack.assertValues(EventName.PAGE_VIEWED.getEventName(), EventName.CARD_CLICKED.getEventName(), EventName.CTA_CLICKED.getEventName());
   }
 
@@ -525,6 +593,68 @@ public class DiscoveryFragmentViewModelTest extends KSRobolectricTestCase {
     this.startUpdateActivity.assertNoValues();
     this.vm.inputs.activitySampleProjectViewHolderUpdateClicked(null, ActivityFactory.updateActivity());
     this.startUpdateActivity.assertValueCount(1);
+  }
+
+  @Test
+  public void testErroredResponseForFetchActivitiesWithCount() {
+    final CurrentUserType currentUser = new MockCurrentUser();
+    final Throwable throwableError = new Throwable();
+    final MockApiClient apiClient = new MockApiClient() {
+      @NonNull
+      @Override
+      public Observable<ActivityEnvelope> fetchActivities(final @Nullable Integer count) {
+        return Observable.error(throwableError);
+      }
+    };
+
+    final Environment env = environment()
+            .toBuilder()
+            .currentUser(currentUser)
+            .apiClient(apiClient)
+            .build();
+
+    setUpEnvironment(env);
+
+    // Load initial params and root categories from activity.
+    setUpInitialHomeAllProjectsParams();
+
+    // Log in.
+    logUserIn(currentUser);
+
+    this.activityTest.assertValueCount(1);
+    this.activityTest.assertError(throwableError);
+    this.activityTest.assertValue(null);
+  }
+
+  @Test
+  public void testSuccessResponseForFetchActivitiesWithCount() {
+    final CurrentUserType currentUser = new MockCurrentUser();
+    final Activity activity = ActivityFactory.activity();
+
+    final MockApiClient apiClient = new MockApiClient() {
+      @NonNull
+      @Override
+      public Observable<ActivityEnvelope> fetchActivities(final @Nullable Integer count) {
+        return Observable.just(ActivityEnvelopeFactory.activityEnvelope(Collections.singletonList(activity)));
+      }
+    };
+
+    final Environment env = environment()
+            .toBuilder()
+            .currentUser(currentUser)
+            .apiClient(apiClient)
+            .build();
+
+    setUpEnvironment(env);
+
+    // Load initial params and root categories from activity.
+    setUpInitialHomeAllProjectsParams();
+
+    // Log in.
+    logUserIn(currentUser);
+
+    this.activityTest.assertValueCount(2);
+    this.activityTest.assertValues(null, activity);
   }
 
   private void logUserIn(final @NonNull CurrentUserType currentUser) {

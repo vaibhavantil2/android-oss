@@ -9,14 +9,14 @@ import com.kickstarter.ui.activities.CampaignDetailsActivity
 import com.kickstarter.ui.activities.CommentsActivity
 import com.kickstarter.ui.activities.CreatorBioActivity
 import com.kickstarter.ui.activities.CreatorDashboardActivity
-import com.kickstarter.ui.activities.ProjectActivity
 import com.kickstarter.ui.activities.ProjectPageActivity
 import com.kickstarter.ui.activities.ProjectUpdatesActivity
 import com.kickstarter.ui.activities.UpdateActivity
+import com.kickstarter.ui.activities.VideoActivity
 import com.kickstarter.ui.data.ProjectData
 
-fun Intent.getProjectIntent(context: Context, isFfEnabled: Boolean): Intent {
-    return this.setClass(context, if (isFfEnabled) ProjectPageActivity::class.java else ProjectActivity::class.java)
+fun Intent.getProjectIntent(context: Context): Intent {
+    return this.setClass(context, ProjectPageActivity::class.java)
 }
 
 /**
@@ -109,4 +109,20 @@ fun Intent.getUpdatesActivityIntent(
     }
 
     return this
+}
+
+/**
+ * Return a Intent ready to launch the video activity
+ * @param context
+ * @param videoSource
+ * @param videoSeekPosition
+ */
+fun Intent.getVideoActivityIntent(
+    context: Context,
+    videoSource: String,
+    videoSeekPosition: Long
+): Intent {
+    return this.setClass(context, VideoActivity::class.java)
+        .putExtra(IntentKey.VIDEO_URL_SOURCE, videoSource)
+        .putExtra(IntentKey.VIDEO_SEEK_POSITION, videoSeekPosition)
 }

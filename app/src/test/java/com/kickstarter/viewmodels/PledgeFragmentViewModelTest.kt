@@ -133,7 +133,7 @@ class PledgeFragmentViewModelTest : KSRobolectricTestCase() {
         reward: Reward = RewardFactory.rewardWithShipping(),
         project: Project = ProjectFactory.project(),
         pledgeReason: PledgeReason = PledgeReason.PLEDGE,
-        addOns: java.util.List<Reward>? = null
+        addOns: List<Reward>? = null
     ) {
         this.vm = PledgeFragmentViewModel.ViewModel(environment)
 
@@ -244,7 +244,9 @@ class PledgeFragmentViewModelTest : KSRobolectricTestCase() {
     fun testCards_whenLoggedIn_userHasCards() {
         val card = StoredCardFactory.discoverCard()
         val mockCurrentUser = MockCurrentUser(UserFactory.user())
-        val project = ProjectFactory.project()
+        val project = ProjectFactory.project().toBuilder()
+            .deadline(this.deadline)
+            .build()
 
         val environment = environmentForShippingRules(ShippingRulesEnvelopeFactory.shippingRules())
             .toBuilder()
@@ -274,7 +276,9 @@ class PledgeFragmentViewModelTest : KSRobolectricTestCase() {
         val allowedCard = StoredCardFactory.visa()
         val storedCards = listOf(StoredCardFactory.discoverCard(), allowedCard, StoredCardFactory.visa())
         val mockCurrentUser = MockCurrentUser(UserFactory.user())
-        val project = ProjectFactory.mxProject()
+        val project = ProjectFactory.mxProject().toBuilder()
+            .deadline(this.deadline)
+            .build()
 
         val environment = environmentForShippingRules(ShippingRulesEnvelopeFactory.shippingRules())
             .toBuilder()
@@ -300,7 +304,9 @@ class PledgeFragmentViewModelTest : KSRobolectricTestCase() {
     fun testCards_whenLoggedIn_userHasCards_noAllowedCards() {
         val storedCards = listOf(StoredCardFactory.discoverCard())
         val mockCurrentUser = MockCurrentUser(UserFactory.user())
-        val project = ProjectFactory.mxProject()
+        val project = ProjectFactory.mxProject().toBuilder()
+            .deadline(this.deadline)
+            .build()
 
         val environment = environmentForShippingRules(ShippingRulesEnvelopeFactory.shippingRules())
             .toBuilder()
@@ -325,7 +331,9 @@ class PledgeFragmentViewModelTest : KSRobolectricTestCase() {
     @Test
     fun testCards_whenLoggedIn_userHasNoCards() {
         val mockCurrentUser = MockCurrentUser(UserFactory.user())
-        val project = ProjectFactory.project()
+        val project = ProjectFactory.project().toBuilder()
+            .deadline(this.deadline)
+            .build()
 
         val environment = environmentForShippingRules(ShippingRulesEnvelopeFactory.shippingRules())
             .toBuilder()
@@ -812,6 +820,30 @@ class PledgeFragmentViewModelTest : KSRobolectricTestCase() {
         setUpEnvironment(environment, noReward, backedProject, PledgeReason.FIX_PLEDGE)
 
         this.totalAmount.assertValue(expectedCurrency(environment, backedProject, 1.0))
+    }
+
+    @Test
+    fun testPledgeSummaryAmount_whenFixingPaymentMethod_whenRewardAddOnShipping() {
+        val testData = setUpBackedRewardWithAddOnsAndShippingTestData()
+        val backedProject = testData.project
+        val reward = testData.reward
+
+        val environment = environment()
+        setUpEnvironment(environment, reward, backedProject, PledgeReason.FIX_PLEDGE)
+
+        this.totalAmount.assertValue(expectedCurrency(environment, backedProject, 40.0))
+    }
+
+    @Test
+    fun testPledgeSummaryAmount_whenFixingPaymentMethod_whenRewardAddOnShippingBonusAmount() {
+        val testData = setUpBackedRewardWithAddOnsAndShippingAndBonusAmountTestData()
+        val backedProject = testData.project
+        val reward = testData.reward
+
+        val environment = environment()
+        setUpEnvironment(environment, reward, backedProject, PledgeReason.FIX_PLEDGE)
+
+        this.totalAmount.assertValue(expectedCurrency(environment, backedProject, 42.0))
     }
 
     @Test
@@ -1311,7 +1343,9 @@ class PledgeFragmentViewModelTest : KSRobolectricTestCase() {
     @Test
     fun testShippingRulesAndProject_whenPhysicalReward() {
         val environment = environmentForShippingRules(ShippingRulesEnvelopeFactory.shippingRules())
-        val project = ProjectFactory.project()
+        val project = ProjectFactory.project().toBuilder()
+            .deadline(this.deadline)
+            .build()
         setUpEnvironment(environment, project = project)
 
         val shippingRules = ShippingRulesEnvelopeFactory.shippingRules().shippingRules()
@@ -1350,7 +1384,10 @@ class PledgeFragmentViewModelTest : KSRobolectricTestCase() {
 
     @Test
     fun testShowNewCardFragment() {
-        val project = ProjectFactory.project()
+        val project = ProjectFactory
+            .project().toBuilder()
+            .deadline(this.deadline)
+            .build()
         setUpEnvironment(environmentForLoggedInUser(UserFactory.user()), RewardFactory.noReward(), project)
 
         this.vm.inputs.newCardButtonClicked()
@@ -2452,10 +2489,11 @@ class PledgeFragmentViewModelTest : KSRobolectricTestCase() {
         val project = ProjectFactory.project()
             .toBuilder()
             .rewards(listOf(reward))
+            .deadline(this.deadline)
             .build()
 
         val addOn = RewardFactory.itemizedAddOn().toBuilder().quantity(2).build()
-        val listAddOns = listOf(addOn, addOn, addOn) as java.util.List<Reward>?
+        val listAddOns = listOf(addOn, addOn, addOn)
 
         setUpEnvironment(environment(), reward, project, addOns = listAddOns)
 
@@ -2486,7 +2524,7 @@ class PledgeFragmentViewModelTest : KSRobolectricTestCase() {
         val addOn = RewardFactory.itemizedAddOn().toBuilder().quantity(2)
             .shippingRules(listOf(ShippingRuleFactory.usShippingRule()))
             .build()
-        val listAddOns = listOf(addOn, addOn, addOn) as java.util.List<Reward>
+        val listAddOns = listOf(addOn, addOn, addOn)
 
         val environment = environment()
         setUpEnvironment(environment, reward, project, addOns = listAddOns)
@@ -2548,7 +2586,7 @@ class PledgeFragmentViewModelTest : KSRobolectricTestCase() {
             .build()
         // total a3 = (15 + 10) * 10 = 250
 
-        val listAddOns = listOf(addOn, addOn2, addOn3) as java.util.List<Reward>
+        val listAddOns = listOf(addOn, addOn2, addOn3)
 
         val environment = environment()
         setUpEnvironment(environment, reward, project, addOns = listAddOns)
@@ -2610,7 +2648,7 @@ class PledgeFragmentViewModelTest : KSRobolectricTestCase() {
             .build()
         // total a3 = (15 + 10) * 10 = 250
 
-        val listAddOns = listOf(addOn, addOn2, addOn3) as java.util.List<Reward>
+        val listAddOns = listOf(addOn, addOn2, addOn3)
 
         val environment = environment()
         setUpEnvironment(environment, reward, project, addOns = listAddOns)
@@ -2753,6 +2791,70 @@ class PledgeFragmentViewModelTest : KSRobolectricTestCase() {
             .build()
 
         return TestData(shippableReward, backedProject, backing, shippingRulesEnvelope, storedCards)
+    }
+
+    private fun setUpBackedRewardWithAddOnsAndShippingAndBonusAmountTestData(): TestData {
+        val backingCard = StoredCardFactory.visa()
+        val reward = RewardFactory.rewardWithShipping()
+        val addOns = RewardFactory.rewardWithShipping()
+        val bAmount = 2.0
+        val storedCards = listOf(StoredCardFactory.discoverCard(), backingCard, StoredCardFactory.visa())
+        val backing = BackingFactory.backing()
+            .toBuilder()
+            .paymentSource(
+                PaymentSourceFactory.visa()
+                    .toBuilder()
+                    .id(backingCard.id())
+                    .build()
+            )
+            .bonusAmount(bAmount)
+            .reward(reward)
+            .rewardId(reward.id())
+            .addOns(listOf(addOns))
+            .build()
+
+        val backedProject = ProjectFactory.backedProject()
+            .toBuilder()
+            .backing(backing)
+            .build()
+
+        val shippingRulesEnvelope = ShippingRulesEnvelopeFactory.shippingRules()
+            .toBuilder()
+            .shippingRules(listOf(ShippingRuleFactory.usShippingRule(), ShippingRuleFactory.germanyShippingRule(), ShippingRuleFactory.mexicoShippingRule()))
+            .build()
+
+        return TestData(reward, backedProject, backing, shippingRulesEnvelope, storedCards)
+    }
+
+    private fun setUpBackedRewardWithAddOnsAndShippingTestData(): TestData {
+        val backingCard = StoredCardFactory.visa()
+        val reward = RewardFactory.rewardWithShipping()
+        val addOns = RewardFactory.rewardWithShipping()
+        val storedCards = listOf(StoredCardFactory.discoverCard(), backingCard, StoredCardFactory.visa())
+        val backing = BackingFactory.backing()
+            .toBuilder()
+            .paymentSource(
+                PaymentSourceFactory.visa()
+                    .toBuilder()
+                    .id(backingCard.id())
+                    .build()
+            )
+            .reward(reward)
+            .rewardId(reward.id())
+            .addOns(listOf(addOns))
+            .build()
+
+        val backedProject = ProjectFactory.backedProject()
+            .toBuilder()
+            .backing(backing)
+            .build()
+
+        val shippingRulesEnvelope = ShippingRulesEnvelopeFactory.shippingRules()
+            .toBuilder()
+            .shippingRules(listOf(ShippingRuleFactory.usShippingRule(), ShippingRuleFactory.germanyShippingRule(), ShippingRuleFactory.mexicoShippingRule()))
+            .build()
+
+        return TestData(reward, backedProject, backing, shippingRulesEnvelope, storedCards)
     }
 
     private fun setUpBackedNoRewardTestData(): TestData {

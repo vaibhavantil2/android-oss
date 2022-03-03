@@ -4,6 +4,7 @@ import android.content.Intent
 import android.util.Pair
 import com.kickstarter.KSRobolectricTestCase
 import com.kickstarter.libs.MockCurrentUser
+import com.kickstarter.libs.utils.EventName
 import com.kickstarter.mock.factories.ApiExceptionFactory
 import com.kickstarter.mock.factories.AvatarFactory
 import com.kickstarter.mock.factories.CommentEnvelopeFactory
@@ -457,8 +458,8 @@ class CommentsViewModelTest : KSRobolectricTestCase() {
 
         vm.inputs.onReplyClicked(comment1, true)
         vm.outputs.startThreadActivity().take(0).subscribe {
-            assertEquals(it.first.comment, comment1)
-            assertTrue(it.second)
+            assertEquals(it.first.first.comment, comment1)
+            assertTrue(it.first.second)
         }
     }
 
@@ -553,6 +554,7 @@ class CommentsViewModelTest : KSRobolectricTestCase() {
             assertTrue(newList[2].comment?.body() == commentCardData2.comment?.body())
             assertTrue(newList[2].commentCardState == commentCardData2.commentCardState)
         }
+        segmentTrack.assertValues(EventName.PAGE_VIEWED.eventName, EventName.CTA_CLICKED.eventName)
     }
 
     @Test
@@ -645,6 +647,10 @@ class CommentsViewModelTest : KSRobolectricTestCase() {
         vm.inputs.checkIfThereAnyPendingComments(false)
         testScheduler.advanceTimeBy(2, TimeUnit.SECONDS)
         this.hasPendingComments.assertValues(Pair(false, false), Pair(true, false), Pair(false, false))
+        segmentTrack.assertValues(EventName.PAGE_VIEWED.eventName, EventName.CTA_CLICKED.eventName)
+
+        vm.onResumeActivity()
+        segmentTrack.assertValues(EventName.PAGE_VIEWED.eventName, EventName.CTA_CLICKED.eventName)
     }
 
     @Test
@@ -737,6 +743,7 @@ class CommentsViewModelTest : KSRobolectricTestCase() {
         vm.inputs.checkIfThereAnyPendingComments(true)
         testScheduler.advanceTimeBy(2, TimeUnit.SECONDS)
         this.hasPendingComments.assertValues(Pair(false, true), Pair(true, true), Pair(false, true))
+        segmentTrack.assertValues(EventName.PAGE_VIEWED.eventName, EventName.CTA_CLICKED.eventName)
     }
 
     @Test
@@ -794,7 +801,8 @@ class CommentsViewModelTest : KSRobolectricTestCase() {
 
     @Test
     fun testCommentsViewModel_deepLink_to_ThreadActivity() {
-        val commentableId = "Q29tbWVudC0zMzU2MTY4Ng"
+        val commentID = "Q29tbWVudC0zMzU2MTY4Ng"
+        val commentableId = "RnJlZWZvcm1Qb3N0LTM0MTQ2ODk="
 
         val currentUser = UserFactory.user()
             .toBuilder()
@@ -810,19 +818,36 @@ class CommentsViewModelTest : KSRobolectricTestCase() {
             override fun getComment(commentableId: String): Observable<Comment> {
                 return Observable.just(comment1)
             }
+            override fun getProjectComments(slug: String, cursor: String?, limit: Int): Observable<CommentEnvelope> {
+                return Observable.just(
+                    CommentEnvelopeFactory.commentsEnvelope().toBuilder().commentableId(commentableId).comments(
+                        listOf(comment1)
+                    ).build()
+                )
+            }
         }).currentUser(MockCurrentUser(currentUser))
             .scheduler(testScheduler)
             .build()
 
         val vm = CommentsViewModel.ViewModel(env)
+
         // Start the view model with a project.
 
-        vm.intent(Intent().putExtra(IntentKey.PROJECT, ProjectFactory.project()))
-        vm.intent(Intent().putExtra(IntentKey.COMMENT, commentableId))
+        vm.intent(
+            Intent().apply {
+                putExtra(IntentKey.COMMENT, commentID)
+                putExtra(IntentKey.PROJECT, ProjectFactory.project())
+            }
+        )
 
         vm.outputs.startThreadActivity().take(0).subscribe {
-            assertEquals(it.first.commentableId, commentableId)
-            assertFalse(it.second)
+            assertEquals(it.first.first.commentableId, commentID)
+            assertFalse(it.first.second)
         }
+
+        vm.onResumeActivity()
+        segmentTrack.assertValues(EventName.PAGE_VIEWED.eventName)
+        vm.onResumeActivity()
+        segmentTrack.assertValues(EventName.PAGE_VIEWED.eventName)
     }
 }

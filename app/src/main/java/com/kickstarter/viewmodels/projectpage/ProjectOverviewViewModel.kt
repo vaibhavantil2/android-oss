@@ -9,14 +9,16 @@ import com.kickstarter.libs.FragmentViewModel
 import com.kickstarter.libs.KSCurrency
 import com.kickstarter.libs.KSString
 import com.kickstarter.libs.models.OptimizelyExperiment
+import com.kickstarter.libs.models.OptimizelyFeature
 import com.kickstarter.libs.rx.transformers.Transformers
-import com.kickstarter.libs.utils.BooleanUtils
 import com.kickstarter.libs.utils.DateTimeUtils
 import com.kickstarter.libs.utils.ExperimentData
 import com.kickstarter.libs.utils.NumberUtils
 import com.kickstarter.libs.utils.ObjectUtils
 import com.kickstarter.libs.utils.ProgressBarUtils
 import com.kickstarter.libs.utils.extensions.deadlineCountdownValue
+import com.kickstarter.libs.utils.extensions.isTrue
+import com.kickstarter.libs.utils.extensions.negate
 import com.kickstarter.models.Project
 import com.kickstarter.models.User
 import com.kickstarter.services.ApolloClientType
@@ -180,6 +182,7 @@ interface ProjectOverviewViewModel {
         fun startUpdatesView(): Observable<ProjectData>
         fun startCampaignView(): Observable<ProjectData>
         fun startCreatorDashboardView(): Observable<ProjectData>
+        fun hideOldCampaignLink(): Observable<Boolean>
     }
 
     class ViewModel(environment: Environment) : FragmentViewModel<ProjectOverviewFragment?>(environment), Inputs, Outputs {
@@ -246,6 +249,7 @@ interface ProjectOverviewViewModel {
         private val startUpdatesView: Observable<ProjectData>
         private val startCampaignView: Observable<ProjectData>
         private val creatorDashBoardView: Observable<ProjectData>
+        private val hideOldCampaignLink: Observable<Boolean>
 
         val inputs: Inputs = this
         val outputs: Outputs = this
@@ -450,7 +454,13 @@ interface ProjectOverviewViewModel {
             return this.creatorDashBoardView
         }
 
+        override fun hideOldCampaignLink(): Observable<Boolean> {
+            return hideOldCampaignLink
+        }
+
         init {
+            hideOldCampaignLink = Observable.just(optimizely.isFeatureEnabled(OptimizelyFeature.Key.ANDROID_STORY_TAB))
+
             val project = projectData
                 .distinctUntilChanged()
                 .map { it.project() }
@@ -502,7 +512,7 @@ interface ProjectOverviewViewModel {
 
             conversionTextViewIsGone = project
                 .map { it.currency() != it.currentCurrency() }
-                .map { BooleanUtils.negate(it) }
+                .map { it.negate() }
 
             conversionPledgedAndGoalText = project
                 .map { proj ->
@@ -606,7 +616,7 @@ interface ProjectOverviewViewModel {
                 .map { buttonTextAndIsCreator: Pair<Int, Boolean?> -> buttonTextAndIsCreator.first }
 
             projectDashboardContainerIsGone = userIsCreatorOfProject
-                .map { BooleanUtils.negate(it) }
+                .map { it.negate() }
 
             projectDisclaimerGoalReachedDateTime = project
                 .filter { obj: Project -> obj.isFunded }
@@ -632,9 +642,9 @@ interface ProjectOverviewViewModel {
                 .map { launchDateAndIsCreator: Pair<DateTime?, Boolean?> ->
                     ObjectUtils.isNotNull(
                         launchDateAndIsCreator.first
-                    ) && BooleanUtils.isTrue(launchDateAndIsCreator.second)
+                    ) && launchDateAndIsCreator.second.isTrue()
                 }
-                .map { BooleanUtils.negate(it) }
+                .map { it.negate() }
 
             projectNameTextViewText = project
                 .map { it.name() }
@@ -654,7 +664,7 @@ interface ProjectOverviewViewModel {
 
             projectSocialViewGroupIsGone = project
                 .map { it.isFriendBacking }
-                .map { BooleanUtils.negate(it) }
+                .map { it.negate() }
 
             projectStateViewGroupBackgroundColorInt = project
                 .filter { p: Project -> !p.isLive }
@@ -726,7 +736,7 @@ interface ProjectOverviewViewModel {
             projectData
                 .compose(Transformers.takePairWhen(campaignClicked))
                 .map { it.first }
-                .filter { it.project().isLive && !it.project().isBacking }
+                .filter { it.project().isLive && !it.project().isBacking() }
                 .compose(bindToLifecycle())
                 .subscribe {
                     this.analyticEvents.trackCampaignDetailsCTAClicked(it)

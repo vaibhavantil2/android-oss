@@ -45,6 +45,7 @@ interface CommentsViewModel {
         fun refreshComment(comment: Comment, position: Int)
         fun refreshCommentCardInCaseFailedPosted(comment: Comment, position: Int)
         fun onShowCanceledPledgeComment(comment: Comment)
+        fun onResumeActivity()
     }
 
     interface Outputs {
@@ -60,8 +61,8 @@ interface CommentsViewModel {
         fun initialLoadCommentsError(): Observable<Throwable>
         fun paginateCommentsError(): Observable<Throwable>
         fun pullToRefreshError(): Observable<Throwable>
-        fun startThreadActivity(): Observable<Pair<CommentCardData, Boolean>>
-        fun startThreadActivityFromDeepLink(): Observable<CommentCardData>
+        fun startThreadActivity(): Observable<Pair<Pair<CommentCardData, Boolean>, String?>>
+        fun startThreadActivityFromDeepLink(): Observable<Pair<CommentCardData, String?>>
         fun hasPendingComments(): Observable<Pair<Boolean, Boolean>>
 
         /** Emits a boolean indicating whether comments are being fetched from the API.  */
@@ -87,6 +88,7 @@ interface CommentsViewModel {
         private val checkIfThereAnyPendingComments = PublishSubject.create<Boolean>()
         private val failedCommentCardToRefresh = PublishSubject.create<Pair<Comment, Int>>()
         private val showCanceledPledgeComment = PublishSubject.create<Comment>()
+        private val onResumeActivity = PublishSubject.create<Void>()
 
         private val closeCommentsPage = BehaviorSubject.create<Void>()
         private val currentUserAvatar = BehaviorSubject.create<String?>()
@@ -104,8 +106,8 @@ interface CommentsViewModel {
         private val displayInitialError = BehaviorSubject.create<Boolean>()
         private val displayPaginationError = BehaviorSubject.create<Boolean>()
         private val commentToRefresh = PublishSubject.create<Pair<Comment, Int>>()
-        private val startThreadActivity = BehaviorSubject.create<Pair<CommentCardData, Boolean>>()
-        private val startThreadActivityFromDeepLink = BehaviorSubject.create<CommentCardData>()
+        private val startThreadActivity = BehaviorSubject.create<Pair<Pair<CommentCardData, Boolean>, String?>>()
+        private val startThreadActivityFromDeepLink = BehaviorSubject.create<Pair<CommentCardData, String?>>()
         private val hasPendingComments = BehaviorSubject.create<Pair<Boolean, Boolean>>()
 
         // - Error observables to handle the 3 different use cases
@@ -113,10 +115,12 @@ interface CommentsViewModel {
         private val initialError = BehaviorSubject.create<Throwable>()
         private val paginationError = BehaviorSubject.create<Throwable>()
         private val pullToRefreshError = BehaviorSubject.create<Throwable>()
-        private var commentableId: String? = null
+        private var commentableId = BehaviorSubject.create<String?>()
 
         private val isFetchingComments = BehaviorSubject.create<Boolean>()
         private lateinit var project: Project
+
+        private var openedThreadActivityFromDeepLink = false
 
         init {
 
@@ -185,21 +189,58 @@ interface CommentsViewModel {
                     it.getStringExtra(IntentKey.COMMENT)?.isNotEmpty()
                 }.map { requireNotNull(it.getStringExtra(IntentKey.COMMENT)) }
 
+            projectOrUpdateComment
+                .distinctUntilChanged()
+                .compose(
+                    // check if the activity opened by deeplink action
+                    combineLatestPair(
+                        intent().map {
+                            it.hasExtra(IntentKey.COMMENT)
+                        }
+                    )
+                )
+                .filter {
+                    !it.second
+                }
+                .map { it.first }
+                .compose(bindToLifecycle())
+                .subscribe {
+                    trackRootCommentPageViewEvent(it)
+                }
+
+            projectOrUpdateComment
+                .compose(Transformers.takeWhen(onResumeActivity))
+                .compose(bindToLifecycle())
+                .subscribe {
+                    // send event after back action after deep link to thread activity
+                    if (openedThreadActivityFromDeepLink) {
+                        trackRootCommentPageViewEvent(it)
+                        openedThreadActivityFromDeepLink = false
+                    }
+                }
+
             deepLinkCommentableId
-                .compose(Transformers.takeWhen(projectOrUpdateComment))
+                .compose(takePairWhen(projectOrUpdateComment))
                 .switchMap {
-                    return@switchMap apolloClient.getComment(it)
+                    return@switchMap apolloClient.getComment(it.first)
                 }.compose(Transformers.neverError())
                 .compose(combineLatestPair(deepLinkCommentableId))
+                .compose(combineLatestPair(commentableId))
                 .map {
                     CommentCardData.builder()
-                        .comment(it.first)
+                        .comment(it.first.first)
                         .project(this.project)
-                        .commentCardState(it.first.cardStatus())
+                        .commentCardState(it.first.first.cardStatus())
                         .commentableId(it.second)
                         .build()
-                }.compose(bindToLifecycle())
-                .subscribe { this.startThreadActivityFromDeepLink.onNext(it) }
+                }.withLatestFrom(projectOrUpdateComment) { commentData, projectOrUpdate ->
+                    Pair(commentData, projectOrUpdate)
+                }
+                .compose(bindToLifecycle())
+                .subscribe {
+                    this.startThreadActivityFromDeepLink.onNext(Pair(it.first, it.second.second?.id()?.toString()))
+                    openedThreadActivityFromDeepLink = true
+                }
 
             this.insertNewCommentToList
                 .distinctUntilChanged()
@@ -214,13 +255,14 @@ interface CommentsViewModel {
                     commentData, project ->
                     Pair(commentData, project)
                 }
+                .compose(combineLatestPair(commentableId))
                 .map {
                     Pair(
                         it.first.first,
                         CommentCardData.builder()
-                            .comment(it.first.second)
-                            .project(it.second)
-                            .commentableId(commentableId)
+                            .comment(it.first.first.second)
+                            .project(it.first.second)
+                            .commentableId(it.second)
                             .commentCardState(CommentCardStatus.TRYING_TO_POST.commentCardStatus)
                             .build()
                     )
@@ -233,6 +275,16 @@ interface CommentsViewModel {
                 }.compose(bindToLifecycle())
                 .subscribe {
                     commentsList.onNext(it)
+                }
+
+            this.commentToRefresh
+                .map { it.first }
+                .distinctUntilChanged()
+                .withLatestFrom(projectOrUpdateComment) {
+                    commentData, project ->
+                    Pair(commentData, project)
+                }.subscribe {
+                    this.analyticEvents.trackCommentCTA(it.second.first, it.first.id().toString(), it.first.body(), it.second.second?.id()?.toString())
                 }
 
             this.onShowGuideLinesLinkClicked
@@ -280,16 +332,24 @@ interface CommentsViewModel {
                 .compose(bindToLifecycle())
                 .subscribe { this.closeCommentsPage.onNext(it) }
 
-            commentsList
+            val subscribe = commentsList
+                .withLatestFrom(projectOrUpdateComment) { commentData, projectOrUpdate ->
+                    Pair(commentData, projectOrUpdate)
+                }
                 .compose(takePairWhen(onReplyClicked))
                 .compose(bindToLifecycle())
                 .subscribe { pair ->
 
-                    val cardData = pair.first.first { it.comment?.id() == pair.second.first.id() }
+                    val cardData =
+                        pair.first.first.first { it.comment?.id() == pair.second.first.id() }
+                    val threadData = Pair(
+                        cardData,
+                        pair.second.second
+                    )
                     this.startThreadActivity.onNext(
                         Pair(
-                            cardData,
-                            pair.second.second
+                            threadData,
+                            pair.first.second.second?.id()?.toString()
                         )
                     )
                 }
@@ -335,6 +395,17 @@ interface CommentsViewModel {
                 .subscribe {
                     this.commentsList.onNext(it)
                 }
+        }
+
+        private fun trackRootCommentPageViewEvent(it: Pair<Project, Update?>) {
+            if (it.second?.id() != null) {
+                this.analyticEvents.trackRootCommentPageViewed(
+                    it.first,
+                    it.second?.id()?.toString()
+                )
+            } else {
+                this.analyticEvents.trackRootCommentPageViewed(it.first)
+            }
         }
 
         private fun loadCommentListFromProjectOrUpdate(projectOrUpdate: Observable<Pair<Project, Update?>>) {
@@ -419,7 +490,7 @@ interface CommentsViewModel {
                     apolloClient.getProjectComments(it.first?.slug() ?: "", cursor)
                 }
             }.doOnNext {
-                commentableId = it.commentableId
+                commentableId.onNext(it.commentableId)
                 // Remove Pagination errorFrom View
                 this.displayPaginationError.onNext(false)
                 this.displayInitialError.onNext(false)
@@ -475,6 +546,9 @@ interface CommentsViewModel {
             this.failedCommentCardToRefresh.onNext(Pair(comment, position))
         override fun onShowCanceledPledgeComment(comment: Comment) =
             this.showCanceledPledgeComment.onNext(comment)
+
+        override fun onResumeActivity() =
+            this.onResumeActivity.onNext(null)
         // - Outputs
         override fun closeCommentsPage(): Observable<Void> = closeCommentsPage
         override fun currentUserAvatar(): Observable<String?> = currentUserAvatar
@@ -492,8 +566,8 @@ interface CommentsViewModel {
 
         override fun setEmptyState(): Observable<Boolean> = setEmptyState
 
-        override fun startThreadActivity(): Observable<Pair<CommentCardData, Boolean>> = this.startThreadActivity
-        override fun startThreadActivityFromDeepLink(): Observable<CommentCardData> = this.startThreadActivityFromDeepLink
+        override fun startThreadActivity(): Observable<Pair<Pair<CommentCardData, Boolean>, String?>> = this.startThreadActivity
+        override fun startThreadActivityFromDeepLink(): Observable<Pair<CommentCardData, String?>> = this.startThreadActivityFromDeepLink
 
         override fun isFetchingComments(): Observable<Boolean> = this.isFetchingComments
 

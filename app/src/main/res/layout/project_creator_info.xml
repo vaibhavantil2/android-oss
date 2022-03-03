@@ -41,6 +41,7 @@
         android:layout_height="wrap_content"
         android:layout_alignParentEnd="true"
         android:layout_centerVertical="true"
+        android:textIsSelectable="true"
         android:importantForAccessibility="no"
         android:src="@drawable/chevron_right"
         app:tint="@color/kds_support_700" />
@@ -122,7 +123,8 @@
     android:paddingStart="@dimen/project_padding_x"
     android:paddingTop="@dimen/grid_4"
     android:paddingEnd="@dimen/project_padding_x"
-    android:textColor="@color/kds_support_400" />
+    android:textColor="@color/kds_support_400"
+    android:textIsSelectable="true"  />
 
   <View
     android:layout_width="match_parent"

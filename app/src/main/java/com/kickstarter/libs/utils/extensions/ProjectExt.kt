@@ -7,11 +7,14 @@ import com.kickstarter.R
 import com.kickstarter.libs.Config
 import com.kickstarter.libs.KSString
 import com.kickstarter.libs.utils.I18nUtils
+import com.kickstarter.libs.utils.ListUtils
+import com.kickstarter.models.Category
 import com.kickstarter.models.Project
 import com.kickstarter.models.User
 import com.kickstarter.services.DiscoveryParams
 import org.joda.time.DateTime
 import org.joda.time.Duration
+import rx.Observable
 import type.CreditCardTypes
 import kotlin.math.floor
 
@@ -157,8 +160,8 @@ fun isProjectNamePunctuated(name: String): Boolean = name.substring(name.length 
  */
 fun Project.metadataForProject(): ProjectMetadata? =
     when {
-        this.isBacking -> ProjectMetadata.BACKING
-        this.isStarred -> ProjectMetadata.SAVING
+        this.isBacking() -> ProjectMetadata.BACKING
+        this.isStarred() -> ProjectMetadata.SAVING
         this.isFeaturedToday -> ProjectMetadata.CATEGORY_FEATURED
         else -> null
     }
@@ -195,8 +198,67 @@ fun isUSUserViewingNonUSProject(userCountry: String, projectCountry: String): Bo
  * In order to update the fulfillment state for a project
  * the the user needs to be a backer, and the project successful
  */
-fun Project.canUpdateFulfillment() = isBacking && isSuccessful
+fun Project.canUpdateFulfillment() = isBacking() && isSuccessful
 
 enum class ProjectMetadata {
     BACKING, SAVING, CATEGORY_FEATURED
+}
+
+/**
+ * Given a list of projects and root categories this will determine if the first project is featured
+ * and is in need of its root category. If that is the case we will find its root and fill in that
+ * data and return a new list of projects.
+ */
+fun List<Project>.fillRootCategoryForFeaturedProjects(rootCategories: List<Category>): List<Project> {
+
+    // Guard against no projects
+    if (this.isEmpty()) {
+        return ListUtils.empty()
+    }
+    val firstProject = this[0]
+
+    // Guard against bad category data on first project
+    val category = firstProject.category() ?: return this
+    val categoryParentId = category.parentId() ?: return this
+
+    // Guard against not needing to find the root category
+    if (!firstProject.projectNeedsRootCategory(category)) {
+        return this
+    }
+
+    // Find the root category for the featured project's category
+    val projectRootCategory = Observable.from(rootCategories)
+        .filter { rootCategory: Category -> rootCategory.id() == categoryParentId }
+        .take(1)
+        .toBlocking().single()
+
+    // Sub in the found root category in our featured project.
+    val newCategory = category.toBuilder().parent(projectRootCategory).build()
+    val newProject = firstProject.toBuilder().category(newCategory).build()
+    return ListUtils.replaced(this, 0, newProject)
+}
+
+/**
+ * Determines if the project and supplied require us to find the root category.
+ */
+fun Project.projectNeedsRootCategory(category: Category): Boolean {
+    return !category.isRoot && category.parent() == null && this.isFeaturedToday
+}
+
+fun Project.updateStartedProjectAndDiscoveryParamsList(
+    listOfProjects: List<Pair<Project, DiscoveryParams>>
+): List<Pair<Project, DiscoveryParams>> {
+
+    val position = listOfProjects.indexOfFirst { item ->
+        item.first.id() == this.id()
+    }
+
+    if (position >= 0 && position < listOfProjects.size) {
+        return listOfProjects.toMutableList().apply {
+            val project = listOfProjects[position].first.toBuilder().isStarred(this@updateStartedProjectAndDiscoveryParamsList.isStarred()).build()
+            this[position] = Pair(project, listOfProjects[position].second)
+        }
+    }
+
+    return listOfProjects
 }

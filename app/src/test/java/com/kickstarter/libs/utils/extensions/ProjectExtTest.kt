@@ -3,6 +3,7 @@ package com.kickstarter.libs.utils.extensions
 import android.content.Context
 import com.kickstarter.KSRobolectricTestCase
 import com.kickstarter.R
+import com.kickstarter.mock.factories.CategoryFactory
 import com.kickstarter.mock.factories.ConfigFactory
 import com.kickstarter.mock.factories.ProjectFactory
 import com.kickstarter.mock.factories.UserFactory
@@ -243,7 +244,7 @@ class ProjectExtTest : KSRobolectricTestCase() {
 
     @Test
     fun testTimeInSecondsUntilDeadline_whenProjectNotFinished_shouldReturnDuration() {
-        val project = ProjectFactory.project().toBuilder().deadline(DateTime.now().plusDays(2)).build()
+        val project = ProjectFactory.project().toBuilder().deadline(DateTime.now().plusDays(2).plusMillis(300)).build()
 
         assertEquals(172800, project.timeInSecondsUntilDeadline())
     }
@@ -284,5 +285,68 @@ class ProjectExtTest : KSRobolectricTestCase() {
     @Test
     fun testIsUSUserViewingNonUSProject_whenProjectUSButUserNotUS_shouldReturnFalse() {
         assertFalse(isUSUserViewingNonUSProject(Locale.GERMANY.country, Locale.US.country))
+    }
+
+    @Test
+    fun testProjectNeedsRootCategory() {
+        assertFalse(ProjectFactory.backedProject().projectNeedsRootCategory(CategoryFactory.tabletopGamesCategory()))
+        assertTrue(
+            ProjectFactory.featured().projectNeedsRootCategory(
+                CategoryFactory
+                    .photographyCategory().toBuilder().parentId(1).build()
+            )
+        )
+    }
+
+    @Test
+    fun testEqualProjects_backing_false() {
+        val backedProject = ProjectFactory.backedProject()
+        val backing = backedProject.backing()?.toBuilder()?.backer(UserFactory.canadianUser())?.build()
+        val secondProject = ProjectFactory.backedProject()
+            .toBuilder()
+            .backing(backing)
+            .build()
+
+        assertFalse(backedProject == secondProject)
+        assertFalse(backedProject.backing() == secondProject.backing())
+    }
+
+    @Test
+    fun testEqualProjects_backing_true() {
+        val backedProject = ProjectFactory.backedProject()
+        val secondProject = backedProject
+
+        assertTrue(backedProject == secondProject)
+        assertTrue(backedProject.backing() == secondProject.backing())
+    }
+
+    @Test
+    fun testEqualProjects_creator_false() {
+        val project = ProjectFactory.project()
+        val creator = project.creator().toBuilder().id(9L).build()
+        val secondProject = ProjectFactory.project()
+            .toBuilder()
+            .creator(creator)
+            .build()
+
+        assertFalse(project == secondProject)
+        assertFalse(project.creator() == secondProject.creator())
+    }
+
+    @Test
+    fun testEqualProjects_creator_true() {
+        val project = ProjectFactory.project()
+        val secondProject = project
+
+        assertTrue(project == secondProject)
+        assertTrue(project.creator() == secondProject.creator())
+    }
+
+    @Test
+    fun testEqualProjects_deadline_true() {
+        val project = ProjectFactory.project()
+        val secondProject = project
+
+        assertTrue(project.deadline() == secondProject.deadline())
     }
 }

@@ -15,6 +15,7 @@ import com.kickstarter.libs.KSCurrency
 import com.kickstarter.libs.ProjectPagerTabs
 import com.kickstarter.libs.RefTag
 import com.kickstarter.libs.models.OptimizelyExperiment
+import com.kickstarter.libs.models.OptimizelyFeature
 import com.kickstarter.libs.rx.transformers.Transformers.combineLatestPair
 import com.kickstarter.libs.rx.transformers.Transformers.errors
 import com.kickstarter.libs.rx.transformers.Transformers.ignoreValues
@@ -22,13 +23,12 @@ import com.kickstarter.libs.rx.transformers.Transformers.neverError
 import com.kickstarter.libs.rx.transformers.Transformers.takePairWhen
 import com.kickstarter.libs.rx.transformers.Transformers.takeWhen
 import com.kickstarter.libs.rx.transformers.Transformers.values
-import com.kickstarter.libs.utils.BooleanUtils
+import com.kickstarter.libs.utils.EventContextValues.ContextPageName.PROJECT
 import com.kickstarter.libs.utils.EventContextValues.ContextSectionName.ENVIRONMENT
 import com.kickstarter.libs.utils.EventContextValues.ContextSectionName.FAQS
 import com.kickstarter.libs.utils.EventContextValues.ContextSectionName.OVERVIEW
 import com.kickstarter.libs.utils.EventContextValues.ContextSectionName.RISKS
 import com.kickstarter.libs.utils.ExperimentData
-import com.kickstarter.libs.utils.IntegerUtils
 import com.kickstarter.libs.utils.ObjectUtils
 import com.kickstarter.libs.utils.ProjectViewUtils
 import com.kickstarter.libs.utils.RefTagUtils
@@ -36,14 +36,17 @@ import com.kickstarter.libs.utils.UrlUtils
 import com.kickstarter.libs.utils.extensions.ProjectMetadata
 import com.kickstarter.libs.utils.extensions.backedReward
 import com.kickstarter.libs.utils.extensions.isErrored
+import com.kickstarter.libs.utils.extensions.isFalse
+import com.kickstarter.libs.utils.extensions.isNonZero
+import com.kickstarter.libs.utils.extensions.isTrue
 import com.kickstarter.libs.utils.extensions.metadataForProject
+import com.kickstarter.libs.utils.extensions.negate
 import com.kickstarter.libs.utils.extensions.updateProjectWith
 import com.kickstarter.libs.utils.extensions.userIsCreator
 import com.kickstarter.models.Backing
 import com.kickstarter.models.Project
 import com.kickstarter.models.Reward
 import com.kickstarter.models.User
-import com.kickstarter.services.ApiClientType
 import com.kickstarter.ui.IntentKey
 import com.kickstarter.ui.activities.ProjectPageActivity
 import com.kickstarter.ui.data.CheckoutData
@@ -243,7 +246,8 @@ interface ProjectPageViewModel {
         /** Emits when the backing view group should be gone. */
         fun backingViewGroupIsVisible(): Observable<Boolean>
 
-        fun updateEnvCommitmentsTabVisibility(): Observable<Boolean>
+        /** Will emmit the need to show/hide the Campaign Tab and the Environmental Tab. */
+        fun updateTabs(): Observable<Pair<Boolean, Boolean>>
 
         fun hideVideoPlayer(): Observable<Boolean>
     }
@@ -252,7 +256,7 @@ interface ProjectPageViewModel {
         ActivityViewModel<ProjectPageActivity>(environment),
         Inputs,
         Outputs {
-        private val client: ApiClientType = environment.apiClient()
+
         private val cookieManager: CookieManager = environment.cookieManager()
         private val currentUser: CurrentUserType = environment.currentUser()
         private val ksCurrency: KSCurrency = environment.ksCurrency()
@@ -323,7 +327,7 @@ interface ProjectPageViewModel {
         private val projectPhoto = PublishSubject.create<String>()
         private val playButtonIsVisible = PublishSubject.create<Boolean>()
         private val backingViewGroupIsVisible = PublishSubject.create<Boolean>()
-        private val updateEnvCommitmentsTabVisibility = PublishSubject.create<Boolean>()
+        private val updateTabs = PublishSubject.create<Pair<Boolean, Boolean>>()
 
         val inputs: Inputs = this
         val outputs: Outputs = this
@@ -379,14 +383,14 @@ interface ProjectPageViewModel {
                 .compose(errors())
 
             mappedProjectValues
-                .filter { BooleanUtils.isTrue(it.displayPrelaunch()) }
+                .filter { it.displayPrelaunch().isTrue() }
                 .map { it.webProjectUrl() }
                 .compose(bindToLifecycle())
                 .subscribe(this.prelaunchUrl)
 
             val initialProject = mappedProjectValues
                 .filter {
-                    BooleanUtils.isFalse(it.displayPrelaunch())
+                    it.displayPrelaunch().isFalse()
                 }
 
             // An observable of the ref tag stored in the cookie for the project. Can emit `null`.
@@ -396,6 +400,26 @@ interface ProjectPageViewModel {
 
             val refTag = intent()
                 .flatMap { ProjectIntentMapper.refTag(it) }
+
+            val saveProjectFromDeepLinkActivity = intent()
+                .take(1)
+                .delay(3, TimeUnit.SECONDS, environment.scheduler()) // add delay to wait until activity subscribed to viewmodel
+                .filter {
+                    it.getBooleanExtra(IntentKey.DEEP_LINK_SCREEN_PROJECT_SAVE, false)
+                }
+                .flatMap { ProjectIntentMapper.deepLinkSaveFlag(it) }
+
+            val saveProjectFromDeepUrl = intent()
+                .take(1)
+                .delay(3, TimeUnit.SECONDS, environment.scheduler()) // add delay to wait until activity subscribed to viewmodel
+                .filter { ObjectUtils.isNotNull(it.data) }
+                .map { requireNotNull(it.data) }
+                .filter {
+                    ProjectIntentMapper.hasSaveQueryFromUri(it)
+                }
+                .map { UrlUtils.saveFlag(it.toString()) }
+                .filter { ObjectUtils.isNotNull(it) }
+                .map { requireNotNull(it) }
 
             val loggedInUserOnHeartClick = this.currentUser.observable()
                 .compose<User>(takeWhen(this.heartButtonClicked))
@@ -407,6 +431,12 @@ interface ProjectPageViewModel {
 
             val projectOnUserChangeSave = initialProject
                 .compose(takeWhen<Project, User>(loggedInUserOnHeartClick))
+                .withLatestFrom(projectData) { initProject, latestProjectData ->
+                    if (latestProjectData.project().isStarred() != initProject.isStarred())
+                        latestProjectData.project()
+                    else
+                        initProject
+                }
                 .switchMap {
                     this.toggleProjectSave(it)
                 }
@@ -453,21 +483,39 @@ interface ProjectPageViewModel {
                 }
                 .share()
 
+            val projectOnDeepLinkChangeSave = Observable.merge(saveProjectFromDeepLinkActivity, saveProjectFromDeepUrl)
+                .compose(combineLatestPair(this.currentUser.observable()))
+                .filter { it.second != null }
+                .withLatestFrom(initialProject) { userAndFlag, p ->
+                    Pair(userAndFlag, p)
+                }
+                .take(1)
+                .filter {
+                    it.second.isStarred() != it.first.first
+                }.switchMap {
+                    if (it.first.first) {
+                        this.saveProject(it.second)
+                    } else {
+                        this.unSaveProject(it.second)
+                    }
+                }.share()
+
             val currentProject = Observable.merge(
                 initialProject,
                 refreshedProjectNotification.compose(values()),
                 projectOnUserChangeSave,
-                savedProjectOnLoginSuccess
+                savedProjectOnLoginSuccess,
+                projectOnDeepLinkChangeSave
             )
 
-            val projectSavedStatus = projectOnUserChangeSave.mergeWith(savedProjectOnLoginSuccess)
+            val projectSavedStatus = Observable.merge(projectOnUserChangeSave, savedProjectOnLoginSuccess, projectOnDeepLinkChangeSave)
 
             projectSavedStatus
                 .compose(bindToLifecycle())
-                .subscribe { this.analyticEvents.trackWatchProjectCTA(it) }
+                .subscribe { this.analyticEvents.trackWatchProjectCTA(it, PROJECT) }
 
             projectSavedStatus
-                .filter { p -> p.isStarred && p.isLive && !p.isApproachingDeadline }
+                .filter { p -> p.isStarred() && p.isLive && !p.isApproachingDeadline }
                 .compose(ignoreValues())
                 .compose(bindToLifecycle())
                 .subscribe(this.showSavedPrompt)
@@ -477,10 +525,13 @@ interface ProjectPageViewModel {
             }
 
             currentProjectData
+                .distinctUntilChanged()
                 .compose(bindToLifecycle())
                 .subscribe {
                     this.projectData.onNext(it)
-                    this.updateEnvCommitmentsTabVisibility.onNext(it.project().envCommitments()?.isNullOrEmpty())
+                    val showEnvironmentalTab = it.project().envCommitments()?.isNotEmpty() ?: false
+                    val showCampaignTab = this.optimizely.isFeatureEnabled(OptimizelyFeature.Key.ANDROID_STORY_TAB)
+                    this.updateTabs.onNext(Pair(showCampaignTab, showEnvironmentalTab))
                 }
 
             currentProject
@@ -493,7 +544,7 @@ interface ProjectPageViewModel {
 
             intent()
                 .take(1)
-                .delay(1, TimeUnit.SECONDS, environment.scheduler()) // add delay to wait until activity subscribed to viewmodel
+                .delay(3, TimeUnit.SECONDS, environment.scheduler()) // add delay to wait until activity subscribed to viewmodel
                 .filter {
                     it.getBooleanExtra(IntentKey.DEEP_LINK_SCREEN_PROJECT_COMMENT, false) &&
                         it.getStringExtra(IntentKey.COMMENT)?.isEmpty() ?: true
@@ -508,7 +559,7 @@ interface ProjectPageViewModel {
 
             intent()
                 .take(1)
-                .delay(1, TimeUnit.SECONDS, environment.scheduler()) // add delay to wait until activity subscribed to viewmodel
+                .delay(3, TimeUnit.SECONDS, environment.scheduler()) // add delay to wait until activity subscribed to viewmodel
                 .filter {
                     it.getBooleanExtra(IntentKey.DEEP_LINK_SCREEN_PROJECT_COMMENT, false) &&
                         it.getStringExtra(IntentKey.COMMENT)?.isNotEmpty() ?: false
@@ -523,7 +574,7 @@ interface ProjectPageViewModel {
 
             intent()
                 .take(1)
-                .delay(1, TimeUnit.SECONDS, environment.scheduler()) // add delay to wait until activity subscribed to viewmodel
+                .delay(3, TimeUnit.SECONDS, environment.scheduler()) // add delay to wait until activity subscribed to viewmodel
                 .filter {
                     it.getStringExtra(IntentKey.DEEP_LINK_SCREEN_PROJECT_UPDATE)?.isNotEmpty() ?: false &&
                         it.getStringExtra(IntentKey.COMMENT)?.isEmpty() ?: true
@@ -543,7 +594,7 @@ interface ProjectPageViewModel {
 
             intent()
                 .take(1)
-                .delay(1, TimeUnit.SECONDS, environment.scheduler()) // add delay to wait until activity subscribed to viewmodel
+                .delay(3, TimeUnit.SECONDS, environment.scheduler()) // add delay to wait until activity subscribed to viewmodel
                 .filter {
                     it.getStringExtra(IntentKey.DEEP_LINK_SCREEN_PROJECT_UPDATE)?.isNotEmpty() ?: false &&
                         it.getStringExtra(IntentKey.COMMENT)?.isNotEmpty() ?: false
@@ -598,11 +649,11 @@ interface ProjectPageViewModel {
                 .map { it.hasRewards() }
                 .distinctUntilChanged()
                 .compose<Pair<Boolean, Boolean>>(combineLatestPair(pledgeSheetExpanded))
-                .filter { BooleanUtils.isFalse(it.second) }
+                .filter { it.second.isFalse() }
                 .map { it.first }
 
             val rewardsLoaded = projectHasRewardsAndSheetCollapsed
-                .filter { BooleanUtils.isTrue(it) }
+                .filter { it.isTrue() }
                 .map { true }
 
             Observable.merge(rewardsLoaded, this.reloadProjectContainerClicked.map { true })
@@ -616,7 +667,7 @@ interface ProjectPageViewModel {
 
             projectHasRewardsAndSheetCollapsed
                 .compose<Pair<Boolean, Boolean>>(combineLatestPair(this.retryProgressBarIsGone))
-                .map { BooleanUtils.negate(it.first && it.second) }
+                .map { (it.first && it.second).negate() }
                 .distinctUntilChanged()
                 .compose(bindToLifecycle())
                 .subscribe(this.pledgeActionButtonContainerIsGone)
@@ -624,7 +675,7 @@ interface ProjectPageViewModel {
             val projectData = Observable.combineLatest<RefTag, RefTag, Project, ProjectData>(refTag, cookieRefTag, currentProject) { refTagFromIntent, refTagFromCookie, project -> projectData(refTagFromIntent, refTagFromCookie, project) }
 
             projectData
-                .filter { it.project().hasRewards() && !it.project().isBacking }
+                .filter { it.project().hasRewards() && !it.project().isBacking() }
                 .distinctUntilChanged()
                 .compose(bindToLifecycle())
                 .subscribe(this.updateFragments)
@@ -651,7 +702,7 @@ interface ProjectPageViewModel {
                 .subscribe { this.hideVideoPlayer.onNext(it) }
 
             val backedProject = currentProject
-                .filter { it.isBacking }
+                .filter { it.isBacking() }
 
             val backing = backedProject
                 .map { it.backing() }
@@ -663,7 +714,7 @@ interface ProjectPageViewModel {
                 .filter { it.project().hasRewards() }
                 .compose<Pair<ProjectData, Backing>>(combineLatestPair(backing))
                 .map {
-                    val updatedProject = if (it.first.project().isBacking)
+                    val updatedProject = if (it.first.project().isBacking())
                         it.first.project().toBuilder().backing(it.second).build()
                     else it.first.project()
 
@@ -674,13 +725,13 @@ interface ProjectPageViewModel {
 
             backedProject
                 .compose<Project>(takeWhen(this.cancelPledgeClicked))
-                .filter { BooleanUtils.isTrue(it.backing()?.cancelable() ?: false) }
+                .filter { (it.backing()?.cancelable() ?: false).isTrue() }
                 .compose(bindToLifecycle())
                 .subscribe(this.showCancelPledgeFragment)
 
             backedProject
                 .compose<Project>(takeWhen(this.cancelPledgeClicked))
-                .filter { BooleanUtils.isFalse(it.backing()?.cancelable() ?: true) }
+                .filter { it.backing()?.cancelable().isFalse() }
                 .compose(ignoreValues())
                 .compose(bindToLifecycle())
                 .subscribe(this.showPledgeNotCancelableDialog)
@@ -724,20 +775,20 @@ interface ProjectPageViewModel {
                 .subscribe(this.revealRewardsFragment)
 
             currentProject
-                .map { it.isBacking && it.isLive || it.backing()?.isErrored() == true }
+                .map { it.isBacking() && it.isLive || it.backing()?.isErrored() == true }
                 .distinctUntilChanged()
                 .compose(bindToLifecycle())
                 .subscribe(this.backingDetailsIsVisible)
 
             currentProject
-                .filter { it.isBacking }
+                .filter { it.isBacking() }
                 .map { if (it.backing()?.isErrored() == true) R.string.Payment_failure else R.string.Youre_a_backer }
                 .distinctUntilChanged()
                 .compose(bindToLifecycle())
                 .subscribe(this.backingDetailsTitle)
 
             currentProject
-                .filter { it.isBacking }
+                .filter { it.isBacking() }
                 .map { backingDetailsSubtitle(it) }
                 .distinctUntilChanged()
                 .compose(bindToLifecycle())
@@ -795,13 +846,13 @@ interface ProjectPageViewModel {
 
             this.fragmentStackCount
                 .compose<Pair<Int, Project>>(combineLatestPair(currentProject))
-                .map { if (it.second.isBacking) it.first > 4 else it.first > 3 }
+                .map { if (it.second.isBacking()) it.first > 4 else it.first > 3 }
                 .distinctUntilChanged()
                 .compose(bindToLifecycle())
                 .subscribe(this.scrimIsVisible)
 
             currentProject
-                .map { p -> if (p.isStarred) R.drawable.icon__heart else R.drawable.icon__heart_outline }
+                .map { p -> if (p.isStarred()) R.drawable.icon__heart else R.drawable.icon__heart_outline }
                 .subscribe(this.heartDrawableId)
 
             currentProject
@@ -850,7 +901,7 @@ interface ProjectPageViewModel {
 
             fullProjectDataAndPledgeFlowContext
                 .compose<Pair<ProjectData, PledgeFlowContext?>>(takeWhen(this.nativeProjectActionButtonClicked))
-                .filter { it.first.project().isLive && !it.first.project().isBacking }
+                .filter { it.first.project().isLive && !it.first.project().isBacking() }
                 .compose(bindToLifecycle())
                 .subscribe {
                     this.analyticEvents.trackPledgeInitiateCTA(it.first)
@@ -876,7 +927,7 @@ interface ProjectPageViewModel {
             val project = projectAndFragmentStackCount.first
             val count = projectAndFragmentStackCount.second
             return when {
-                !project.isBacking || IntegerUtils.isNonZero(count) -> null
+                !project.isBacking() || count.isNonZero() -> null
                 project.isLive -> when {
                     project.backing()?.status() == Backing.STATUS_PREAUTH -> R.menu.manage_pledge_preauth
                     else -> R.menu.manage_pledge_live
@@ -892,7 +943,7 @@ interface ProjectPageViewModel {
         private fun pledgeFlowContext(project: Project, currentUser: User?): PledgeFlowContext? {
             return when {
                 project.userIsCreator(currentUser) -> null
-                project.isLive && !project.isBacking -> PledgeFlowContext.NEW_PLEDGE
+                project.isLive && !project.isBacking() -> PledgeFlowContext.NEW_PLEDGE
                 !project.isLive && project.backing()?.isErrored() ?: false -> PledgeFlowContext.FIX_ERRORED_PLEDGE
                 else -> null
             }
@@ -1107,8 +1158,7 @@ interface ProjectPageViewModel {
         override fun startVideoActivity(): Observable<Project> = this.startVideoActivity
 
         @NonNull
-        override fun updateEnvCommitmentsTabVisibility(): Observable<Boolean> = this
-            .updateEnvCommitmentsTabVisibility
+        override fun updateTabs(): Observable<Pair<Boolean, Boolean>> = this.updateTabs
 
         @NonNull
         override fun hideVideoPlayer(): Observable<Boolean> = this.hideVideoPlayer
@@ -1143,13 +1193,19 @@ interface ProjectPageViewModel {
         }
 
         private fun saveProject(project: Project): Observable<Project> {
-            return this.client.saveProject(project)
+            return this.apolloClient.watchProject(project)
                 .compose(neverError())
         }
 
+        private fun unSaveProject(project: Project): Observable<Project> {
+            return this.apolloClient.unWatchProject(project).compose(neverError())
+        }
+
         private fun toggleProjectSave(project: Project): Observable<Project> {
-            return this.client.toggleProjectSave(project)
-                .compose(neverError())
+            return if (project.isStarred())
+                unSaveProject(project)
+            else
+                saveProject(project)
         }
     }
 }

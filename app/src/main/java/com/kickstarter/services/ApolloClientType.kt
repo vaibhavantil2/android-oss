@@ -8,6 +8,7 @@ import UpdateUserEmailMutation
 import UpdateUserPasswordMutation
 import UserPrivacyQuery
 import com.kickstarter.models.Backing
+import com.kickstarter.models.Category
 import com.kickstarter.models.Checkout
 import com.kickstarter.models.Comment
 import com.kickstarter.models.CreatorDetails
@@ -17,6 +18,7 @@ import com.kickstarter.models.Project
 import com.kickstarter.models.Reward
 import com.kickstarter.models.StoredCard
 import com.kickstarter.models.User
+import com.kickstarter.services.apiresponses.DiscoverEnvelope
 import com.kickstarter.services.apiresponses.commentresponse.CommentEnvelope
 import com.kickstarter.services.mutations.CreateBackingData
 import com.kickstarter.services.mutations.PostCommentData
@@ -34,9 +36,18 @@ interface ApolloClientType {
 
     fun clearUnseenActivity(): Observable<Int>
 
+    fun fetchCategories(): Observable<List<Category>>
+
+    fun fetchCategory(param: String): Observable<Category?>
+
     fun getProject(slug: String): Observable<Project>
 
     fun getProject(project: Project): Observable<Project>
+
+    fun getProjects(discoveryParams: DiscoveryParams, cursor: String? = null): Observable<DiscoverEnvelope>
+
+    // - Get projects from the Creator Dashboard
+    fun getProjects(isMember: Boolean): Observable<DiscoverEnvelope>
 
     fun getProjectComments(slug: String, cursor: String?, limit: Int = PAGE_SIZE): Observable<CommentEnvelope>
 
@@ -60,6 +71,10 @@ interface ApolloClientType {
 
     fun getProjectAddOns(slug: String, locationId: Location): Observable<List<Reward>>
 
+    fun watchProject(project: Project): Observable<Project>
+
+    fun unWatchProject(project: Project): Observable<Project>
+
     fun getStoredCards(): Observable<List<StoredCard>>
 
     fun savePaymentMethod(savePaymentMethodData: SavePaymentMethodData): Observable<StoredCard>
@@ -80,5 +95,7 @@ interface ApolloClientType {
 }
 
 private const val PAGE_SIZE = 25
+
+const val DISCOVERY_PAGE_SIZE = 15
 
 private const val REPLIES_PAGE_SIZE = 7

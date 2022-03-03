@@ -18,8 +18,8 @@ import androidx.annotation.MenuRes
 import androidx.annotation.StringRes
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
-import androidx.core.view.isGone
 import androidx.fragment.app.FragmentManager
+import com.aghajari.zoomhelper.ZoomHelper
 import com.google.android.material.tabs.TabLayout
 import com.google.android.material.tabs.TabLayoutMediator
 import com.google.firebase.crashlytics.FirebaseCrashlytics
@@ -35,7 +35,6 @@ import com.kickstarter.libs.ProjectPagerTabs
 import com.kickstarter.libs.qualifiers.RequiresActivityViewModel
 import com.kickstarter.libs.rx.transformers.Transformers
 import com.kickstarter.libs.utils.ApplicationUtils
-import com.kickstarter.libs.utils.ObjectUtils
 import com.kickstarter.libs.utils.ViewUtils
 import com.kickstarter.libs.utils.extensions.toVisibility
 import com.kickstarter.models.Project
@@ -76,17 +75,10 @@ class ProjectPageActivity :
     private val animDuration = 200L
     private lateinit var binding: ActivityProjectPageBinding
 
-    private var pagerAdapterMap = mutableMapOf(
-        ProjectPagerTabs.OVERVIEW to true,
-        // ProjectPagerTabs.CAMPAIGN to true, // TODO bring back ProjectPagerTabs.CAMPAIGN to true, on second place once the HTML parser is in place
-        ProjectPagerTabs.FAQS to true,
-        ProjectPagerTabs.RISKS to true,
-        ProjectPagerTabs.ENVIRONMENTAL_COMMITMENT to false
-    )
-
-    private var pagerAdapter = ProjectPagerAdapter(
-        supportFragmentManager, pagerAdapterMap,
-        lifecycle
+    private val pagerAdapterList = mutableListOf(
+        ProjectPagerTabs.OVERVIEW,
+        ProjectPagerTabs.FAQS,
+        ProjectPagerTabs.RISKS,
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -98,7 +90,7 @@ class ProjectPageActivity :
         // Do not configure the pager at other lifecycle events apart from OnCreate
         if (savedInstanceState == null) {
             // - Configure pager on load, otherwise the first fragment on the pager gets no data
-            configurePager()
+            configurePager(pagerAdapterList)
         }
 
         val viewTreeObserver = binding.pledgeContainerLayout.pledgeContainerRoot.viewTreeObserver
@@ -130,24 +122,20 @@ class ProjectPageActivity :
             .subscribe {
                 // - Every time the ProjectData gets updated
                 // - the fragments on the viewPager are updated as well
-                pagerAdapter.updatedWithProjectData(it)
+                (binding.projectPager.adapter as ProjectPagerAdapter).updatedWithProjectData(it)
             }
 
-        this.viewModel.outputs.updateEnvCommitmentsTabVisibility()
-            .filter { ObjectUtils.isNotNull(it) }
-            .map { requireNotNull(it) }
-            .distinctUntilChanged()
+        this.viewModel.outputs.updateTabs()
             .compose(bindToLifecycle())
             .observeOn(AndroidSchedulers.mainThread())
-            .subscribe { isGone ->
-                binding.projectDetailTabs.getTabAt(
-                    ProjectPagerTabs.ENVIRONMENTAL_COMMITMENT
-                        .ordinal
-                )?.view?.isGone = isGone
-                if (!isGone) {
-                    pagerAdapterMap[ProjectPagerTabs.ENVIRONMENTAL_COMMITMENT] = !isGone
+            .subscribe { updateTabs ->
+                if (updateTabs.first) {
+                    pagerAdapterList.add(ProjectPagerTabs.CAMPAIGN.ordinal, ProjectPagerTabs.CAMPAIGN)
                 }
-                configurePager()
+                if (updateTabs.second) {
+                    pagerAdapterList.add(ProjectPagerTabs.ENVIRONMENTAL_COMMITMENT)
+                }
+                configurePager(pagerAdapterList)
             }
 
         this.viewModel.outputs.backingDetailsSubtitle()
@@ -369,16 +357,14 @@ class ProjectPageActivity :
         }
     }
 
-    private fun configurePager() {
+    private fun configurePager(pagerList: List<ProjectPagerTabs>) {
         val viewPager = binding.projectPager
         val tabLayout = binding.projectDetailTabs
 
-        pagerAdapter = ProjectPagerAdapter(supportFragmentManager, pagerAdapterMap, lifecycle)
-
-        viewPager.adapter = pagerAdapter
+        viewPager.adapter = ProjectPagerAdapter(supportFragmentManager, pagerList, lifecycle)
 
         TabLayoutMediator(tabLayout, viewPager) { tab, position ->
-            tab.text = getTabTitle(position)
+            tab.text = getTabTitle(position, pagerList)
         }.attach()
 
         tabLayout.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
@@ -417,6 +403,10 @@ class ProjectPageActivity :
     }
 
     override fun dispatchTouchEvent(event: MotionEvent?): Boolean {
+        event?.let {
+            ZoomHelper.getInstance().dispatchTouchEvent(it, this)
+        }
+
         if (event?.action == MotionEvent.ACTION_DOWN) {
             val view = currentFocus
             if (view is EditText || view?.parent is CardInputWidget) {
@@ -465,13 +455,12 @@ class ProjectPageActivity :
         return Pair.create(R.anim.fade_in_slide_in_left, R.anim.slide_out_right)
     }
 
-    private fun getTabTitle(position: Int) = when (position) {
-        ProjectPagerTabs.OVERVIEW.ordinal -> getString(R.string.Overview)
-        // ProjectPagerTabs.CAMPAIGN.ordinal -> getString(R.string.Campaign) // TODO bring back CAMPAIGN, on second place once the HTML parser is in place
-        ProjectPagerTabs.FAQS.ordinal -> getString(R.string.Faq)
-        ProjectPagerTabs.RISKS.ordinal -> getString(R.string.Risks)
-        ProjectPagerTabs.ENVIRONMENTAL_COMMITMENT.ordinal -> getString(R.string.Environmental_Commitments)
-        else -> ""
+    private fun getTabTitle(position: Int, pagerList: List<ProjectPagerTabs>) = when (pagerList[position]) {
+        ProjectPagerTabs.OVERVIEW -> getString(R.string.Overview)
+        ProjectPagerTabs.CAMPAIGN -> getString(R.string.Campaign)
+        ProjectPagerTabs.FAQS -> getString(R.string.Faq)
+        ProjectPagerTabs.RISKS -> getString(R.string.Risks)
+        ProjectPagerTabs.ENVIRONMENTAL_COMMITMENT -> getString(R.string.Environmental_commitments)
     }
 
     private fun animateScrimVisibility(show: Boolean) {
@@ -506,6 +495,12 @@ class ProjectPageActivity :
     }
 
     private fun expandPledgeSheet(expandAndAnimate: Pair<Boolean, Boolean>) {
+        var statusBarHeight = 0
+        val resourceId = resources.getIdentifier("status_bar_height", "dimen", "android")
+        if (resourceId > 0) {
+            statusBarHeight = resources.getDimensionPixelSize(resourceId)
+        }
+
         val expand = expandAndAnimate.first
         val animate = expandAndAnimate.second
         val targetToShow = if (!expand) binding.pledgeContainerLayout.pledgeActionButtonsLayout else binding.pledgeContainerLayout.pledgeContainer
@@ -515,13 +510,8 @@ class ProjectPageActivity :
         val hideRewardsFragmentAnimator = ObjectAnimator.ofFloat(targetToHide, View.ALPHA, 1f, 0f)
 
         val guideline = rewardsSheetGuideline()
-        val retryPadding = resources.getDimensionPixelSize(R.dimen.grid_4) // pledge_sheet_retry_container padding
         val initialValue = (if (expand) binding.pledgeContainerLayout.pledgeContainerRoot.height - guideline else 0).toFloat()
-        val finalValue = (
-            if (expand) if (retryPadding> 0)retryPadding else 0 else binding
-                .pledgeContainerLayout
-                .pledgeContainerRoot.height - guideline + retryPadding
-            ).toFloat()
+        val finalValue = ((if (expand) 0 else binding.pledgeContainerLayout.pledgeContainerRoot.height - guideline) + statusBarHeight).toFloat()
         val initialRadius = resources.getDimensionPixelSize(R.dimen.fab_radius).toFloat()
 
         val pledgeContainerYAnimator = ObjectAnimator.ofFloat(binding.pledgeContainerLayout.pledgeContainerRoot, View.Y, initialValue, finalValue).apply {
@@ -630,24 +620,24 @@ class ProjectPageActivity :
         }
 
         binding.pledgeContainerLayout.pledgeToolbar.setOnMenuItemClickListener {
-            when {
-                it.itemId == R.id.update_pledge -> {
+            when (it.itemId) {
+                R.id.update_pledge -> {
                     this.viewModel.inputs.updatePledgeClicked()
                     true
                 }
-                it.itemId == R.id.rewards -> {
+                R.id.rewards -> {
                     this.viewModel.inputs.viewRewardsClicked()
                     true
                 }
-                it.itemId == R.id.update_payment -> {
+                R.id.update_payment -> {
                     this.viewModel.inputs.updatePaymentClicked()
                     true
                 }
-                it.itemId == R.id.cancel_pledge -> {
+                R.id.cancel_pledge -> {
                     this.viewModel.inputs.cancelPledgeClicked()
                     true
                 }
-                it.itemId == R.id.contact_creator -> {
+                R.id.contact_creator -> {
                     this.viewModel.inputs.contactCreatorClicked()
                     true
                 }
@@ -793,9 +783,9 @@ class ProjectPageActivity :
             val rewardsFragment = rewardsFragment()
             val backingFragment = backingFragment()
             if (rewardsFragment != null && backingFragment != null) {
-                when {
-                    supportFragmentManager.backStackEntryCount == 0 -> when {
-                        projectData.project().isBacking -> if (!rewardsFragment.isHidden) {
+                when (supportFragmentManager.backStackEntryCount) {
+                    0 -> when {
+                        projectData.project().isBacking() -> if (!rewardsFragment.isHidden) {
                             supportFragmentManager.beginTransaction()
                                 .show(backingFragment)
                                 .hide(rewardsFragment)
@@ -814,6 +804,12 @@ class ProjectPageActivity :
         } catch (e: IllegalStateException) {
             FirebaseCrashlytics.getInstance().recordException(e)
         }
+    }
+
+    override fun onDestroy() {
+        binding.projectPager.adapter = null
+        this.viewModel = null
+        super.onDestroy()
     }
 
     private fun updateManagePledgeMenu(@MenuRes menu: Int?) {

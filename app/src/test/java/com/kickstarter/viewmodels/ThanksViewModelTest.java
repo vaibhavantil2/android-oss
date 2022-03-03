@@ -38,7 +38,6 @@ import java.util.Collections;
 
 import androidx.annotation.NonNull;
 
-import kotlin.Triple;
 import rx.observers.TestSubscriber;
 
 public final class ThanksViewModelTest extends KSRobolectricTestCase {
@@ -49,8 +48,8 @@ public final class ThanksViewModelTest extends KSRobolectricTestCase {
   private final TestSubscriber<Void> showRatingDialogTest = new TestSubscriber<>();
   private final TestSubscriber<Void> showConfirmGamesNewsletterDialogTest = TestSubscriber.create();
   private final TestSubscriber<DiscoveryParams> startDiscoveryTest = new TestSubscriber<>();
-  private final TestSubscriber<Triple<Project, RefTag, Boolean>> startProjectTest = new TestSubscriber<>();
-  private final TestSubscriber<Pair<Project, RefTag>> startProjectPageTest = new TestSubscriber<>();
+  private final TestSubscriber<Pair<Project, RefTag>> startProjectTest = new TestSubscriber<>();
+  private final TestSubscriber<Void> showSavedPromptTest = new TestSubscriber<>();
 
   protected void setUpEnvironment(final @NonNull Environment environment) {
     this.vm = new ThanksViewModel.ViewModel(environment);
@@ -61,6 +60,26 @@ public final class ThanksViewModelTest extends KSRobolectricTestCase {
     this.vm.outputs.showConfirmGamesNewsletterDialog().subscribe(this.showConfirmGamesNewsletterDialogTest);
     this.vm.outputs.startDiscoveryActivity().subscribe(this.startDiscoveryTest);
     this.vm.outputs.startProjectActivity().subscribe(this.startProjectTest);
+    this.vm.outputs.showSavedPrompt().subscribe(this.showSavedPromptTest);
+  }
+
+  @Test
+  public void testSaveProject() {
+    final Project project = ProjectFactory.project()
+            .toBuilder()
+            .category(CategoryFactory.artCategory())
+            .build();
+
+    setUpEnvironment(environment());
+
+    this.vm.intent(new Intent().putExtra(IntentKey.PROJECT, project));
+    this.adapterData.assertValueCount(1);
+
+    this.vm.inputs.onHeartButtonClicked(project);
+
+    this.adapterData.assertValueCount(2);
+    this.showSavedPromptTest.assertValueCount(1);
+    this.segmentTrack.assertValues(EventName.CTA_CLICKED.getEventName());
   }
 
   @Test
@@ -252,8 +271,8 @@ public final class ThanksViewModelTest extends KSRobolectricTestCase {
 
     final TestSubscriber<User> updateUserSettingsTest = new TestSubscriber<>();
     ((MockApiClient) environment.apiClient()).observable()
-      .filter(e -> "update_user_settings".equals(e.first))
-      .map(e -> (User) e.second.get("user"))
+      .filter(e -> "update_user_settings".equals(e.getFirst()))
+      .map(e -> (User) e.getSecond().get("user"))
       .subscribe(updateUserSettingsTest);
 
     final Project project = ProjectFactory.project()
@@ -316,10 +335,9 @@ public final class ThanksViewModelTest extends KSRobolectricTestCase {
 
     this.vm.inputs.projectCardViewHolderClicked(project);
 
-    final Triple<Project, RefTag, Boolean> projectPageParams= this.startProjectTest.getOnNextEvents().get(0);
-    assertEquals(projectPageParams.getFirst(), project);
-    assertEquals(projectPageParams.getSecond(), RefTag.thanks());
-    assertFalse(projectPageParams.getThird());
+    final Pair<Project, RefTag> projectPageParams= this.startProjectTest.getOnNextEvents().get(0);
+    assertEquals(projectPageParams.first, project);
+    assertEquals(projectPageParams.second, RefTag.thanks());
 
     this.segmentTrack.assertValues(EventName.PAGE_VIEWED.getEventName(), EventName.CTA_CLICKED.getEventName());
   }
@@ -355,10 +373,9 @@ public final class ThanksViewModelTest extends KSRobolectricTestCase {
 
     this.vm.inputs.projectCardViewHolderClicked(project);
 
-    final Triple<Project, RefTag, Boolean> projectPageParams= this.startProjectTest.getOnNextEvents().get(0);
-    assertEquals(projectPageParams.getFirst(), project);
-    assertEquals(projectPageParams.getSecond(), RefTag.thanks());
-    assertTrue(projectPageParams.getThird());
+    final Pair<Project, RefTag> projectPageParams= this.startProjectTest.getOnNextEvents().get(0);
+    assertEquals(projectPageParams.first, project);
+    assertEquals(projectPageParams.second, RefTag.thanks());
 
     this.segmentTrack.assertValues(EventName.PAGE_VIEWED.getEventName(), EventName.CTA_CLICKED.getEventName());
   }

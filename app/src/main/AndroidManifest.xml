@@ -21,8 +21,7 @@
 
     <application
         android:name=".KSApplication"
-        android:allowBackup="true"
-        android:fullBackupContent="@xml/full_backup_content"
+        android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher"
@@ -39,7 +38,7 @@
             android:theme="@style/ActivityFeedActivity" />
         <activity
             android:name=".ui.activities.CampaignDetailsActivity"
-            android:parentActivityName=".ui.activities.ProjectActivity" />
+            android:parentActivityName=".ui.activities.ProjectPageActivity" />
         <activity
             android:name=".ui.activities.ChangeEmailActivity"
             android:theme="@style/SettingsActivity" />
@@ -181,17 +180,12 @@
             android:name=".ui.activities.ProjectPageActivity"
             android:parentActivityName=".ui.activities.DiscoveryActivity"
             android:theme="@style/ProjectActivity"
-            android:windowSoftInputMode="adjustResize" />
-        <activity
-            android:name=".ui.activities.ProjectNotificationSettingsActivity"
-            android:parentActivityName=".ui.activities.SettingsActivity"
-            android:theme="@style/SettingsActivity" />
-        <activity
-            android:name=".ui.activities.ProjectActivity"
-            android:parentActivityName=".ui.activities.DiscoveryActivity"
-            android:theme="@style/ProjectActivity"
+            android:screenOrientation="portrait"
             android:exported="true"
-            android:windowSoftInputMode="adjustResize">
+            android:configChanges="screenSize|orientation"
+            android:windowSoftInputMode="adjustResize"
+            android:launchMode="singleInstance"
+            tools:ignore="LockedOrientationActivity" >
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
 
@@ -205,12 +199,15 @@
             </intent-filter>
         </activity>
         <activity
+            android:name=".ui.activities.ProjectNotificationSettingsActivity"
+            android:parentActivityName=".ui.activities.SettingsActivity"
+            android:theme="@style/SettingsActivity" />
+        <activity
             android:name=".ui.activities.ProjectSocialActivity"
-            android:parentActivityName=".ui.activities.ProjectActivity" />
+            android:parentActivityName=".ui.activities.ProjectPageActivity" />
         <activity
             android:name=".ui.activities.ProjectUpdatesActivity"
-            android:parentActivityName=".ui.activities.ProjectActivity" />
-        <activity android:name="com.qualtrics.digital.QualtricsSurveyActivity" />
+            android:parentActivityName=".ui.activities.ProjectPageActivity" />
         <activity
             android:name=".ui.activities.SearchActivity"
             android:parentActivityName=".ui.activities.DiscoveryActivity"
@@ -240,12 +237,12 @@
         <activity
             android:name=".ui.activities.VideoActivity"
             android:configChanges="keyboardHidden|screenSize"
-            android:parentActivityName=".ui.activities.ProjectActivity"
+            android:parentActivityName=".ui.activities.ProjectPageActivity"
             android:screenOrientation="sensorLandscape"
             android:theme="@style/VideoPlayerActivity" />
         <activity
             android:name=".ui.activities.BackingActivity"
-            android:parentActivityName=".ui.activities.ProjectActivity"
+            android:parentActivityName=".ui.activities.ProjectPageActivity"
             android:theme="@style/BackingActivity" />
         <activity
             android:name="com.facebook.FacebookActivity"

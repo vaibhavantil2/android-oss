@@ -10,7 +10,6 @@ import com.kickstarter.libs.KSString
 import com.kickstarter.libs.rx.transformers.Transformers.combineLatestPair
 import com.kickstarter.libs.rx.transformers.Transformers.neverError
 import com.kickstarter.libs.rx.transformers.Transformers.takePairWhen
-import com.kickstarter.libs.utils.BooleanUtils
 import com.kickstarter.libs.utils.DateTimeUtils
 import com.kickstarter.libs.utils.NumberUtils
 import com.kickstarter.libs.utils.ObjectUtils
@@ -18,9 +17,11 @@ import com.kickstarter.libs.utils.ProjectViewUtils
 import com.kickstarter.libs.utils.RewardUtils
 import com.kickstarter.libs.utils.extensions.backedReward
 import com.kickstarter.libs.utils.extensions.isErrored
+import com.kickstarter.libs.utils.extensions.negate
 import com.kickstarter.libs.utils.extensions.userIsCreator
 import com.kickstarter.mock.factories.RewardFactory
 import com.kickstarter.models.Backing
+import com.kickstarter.models.PaymentSource
 import com.kickstarter.models.Project
 import com.kickstarter.models.Reward
 import com.kickstarter.models.StoredCard
@@ -205,7 +206,7 @@ interface BackingFragmentViewModel {
                 .subscribe(this.showUpdatePledgeSuccess)
 
             this.projectDataInput
-                .filter { it.project().isBacking || it.project().userIsCreator(it.user()) }
+                .filter { it.project().isBacking() || it.project().userIsCreator(it.user()) }
                 .map { projectData -> joinProjectDataAndReward(projectData) }
                 .compose(bindToLifecycle())
                 .subscribe(this.projectDataAndReward)
@@ -309,7 +310,7 @@ interface BackingFragmentViewModel {
                 .map { it.paymentSource() }
                 .map { CreditCardPaymentType.safeValueOf(it?.paymentType()) }
                 .map { it == CreditCardPaymentType.ANDROID_PAY || it == CreditCardPaymentType.APPLE_PAY || it == CreditCardPaymentType.CREDIT_CARD }
-                .map { BooleanUtils.negate(it) }
+                .map { it.negate() }
                 .distinctUntilChanged()
                 .compose(bindToLifecycle())
                 .subscribe(this.paymentMethodIsGone)
@@ -317,7 +318,7 @@ interface BackingFragmentViewModel {
             val paymentSource = backing
                 .map { it.paymentSource() }
                 .filter { ObjectUtils.isNotNull(it) }
-                .ofType(Backing.PaymentSource::class.java)
+                .ofType(PaymentSource::class.java)
 
             val simpleDateFormat = SimpleDateFormat(StoredCard.DATE_FORMAT, Locale.getDefault())
 
@@ -353,7 +354,7 @@ interface BackingFragmentViewModel {
             val backingIsNotErrored = backing
                 .map { it.isErrored() }
                 .distinctUntilChanged()
-                .map { BooleanUtils.negate(it) }
+                .map { it.negate() }
 
             backingIsNotErrored
                 .compose(bindToLifecycle())
@@ -401,7 +402,7 @@ interface BackingFragmentViewModel {
             val sectionShouldBeGone = rewardIsReceivable
                 .compose(combineLatestPair<Boolean, Boolean>(backingIsCollected))
                 .map { it.first && it.second }
-                .map { BooleanUtils.negate(it) }
+                .map { it.negate() }
                 .distinctUntilChanged()
 
             sectionShouldBeGone
@@ -486,7 +487,7 @@ interface BackingFragmentViewModel {
             return Pair(projectData, reward)
         }
 
-        private fun cardIssuer(paymentSource: Backing.PaymentSource): Either<String, Int> {
+        private fun cardIssuer(paymentSource: PaymentSource): Either<String, Int> {
             return when (CreditCardPaymentType.safeValueOf(paymentSource.paymentType())) {
                 CreditCardPaymentType.ANDROID_PAY -> Either.Right(R.string.googlepay_button_content_description)
                 CreditCardPaymentType.APPLE_PAY -> Either.Right(R.string.apple_pay_content_description)
@@ -495,7 +496,7 @@ interface BackingFragmentViewModel {
             }
         }
 
-        private fun cardLogo(paymentSource: Backing.PaymentSource): Int {
+        private fun cardLogo(paymentSource: PaymentSource): Int {
             return when (CreditCardPaymentType.safeValueOf(paymentSource.paymentType())) {
                 CreditCardPaymentType.ANDROID_PAY -> R.drawable.google_pay_mark
                 CreditCardPaymentType.APPLE_PAY -> R.drawable.apple_pay_mark

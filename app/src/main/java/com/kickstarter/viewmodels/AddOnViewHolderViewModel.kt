@@ -7,8 +7,8 @@ import com.kickstarter.libs.ActivityViewModel
 import com.kickstarter.libs.Environment
 import com.kickstarter.libs.KSCurrency
 import com.kickstarter.libs.models.Country
-import com.kickstarter.libs.utils.BooleanUtils
 import com.kickstarter.libs.utils.RewardUtils
+import com.kickstarter.libs.utils.extensions.negate
 import com.kickstarter.models.Project
 import com.kickstarter.models.Reward
 import com.kickstarter.models.RewardsItem
@@ -120,7 +120,7 @@ interface AddOnViewHolderViewModel {
                 .subscribe(this.descriptionForReward)
 
             reward
-                .filter { !it.isAddOn && RewardUtils.isNoReward(it) }
+                .filter { !it.isAddOn() && RewardUtils.isNoReward(it) }
                 .compose(bindToLifecycle())
                 .subscribe {
                     this.descriptionForNoReward.onNext(R.string.Thanks_for_bringing_this_project_one_step_closer_to_becoming_a_reality)
@@ -129,30 +129,30 @@ interface AddOnViewHolderViewModel {
 
             reward
                 .filter { RewardUtils.isItemized(it) }
-                .map { if (it.isAddOn) it.addOnsItems() else it.rewardsItems() }
+                .map { if (it.isAddOn()) it.addOnsItems() else it.rewardsItems() }
                 .compose(bindToLifecycle())
                 .subscribe(this.rewardItems)
 
             reward
                 .map { RewardUtils.isItemized(it) }
-                .map { BooleanUtils.negate(it) }
+                .map { it.negate() }
                 .distinctUntilChanged()
                 .compose(bindToLifecycle())
                 .subscribe(this.rewardItemsAreGone)
 
             reward
-                .filter { !it.isAddOn && RewardUtils.isReward(it) }
+                .filter { !it.isAddOn() && RewardUtils.isReward(it) }
                 .map { it.title() }
                 .compose(bindToLifecycle())
                 .subscribe(this.titleForReward)
 
             reward
-                .map { !it.isAddOn }
+                .map { !it.isAddOn() }
                 .compose(bindToLifecycle())
                 .subscribe(this.titleIsGone)
 
             reward
-                .filter { it.isAddOn && it.quantity()?.let { q -> q > 0 } ?: false }
+                .filter { it.isAddOn() && it.quantity()?.let { q -> q > 0 } ?: false }
                 .map { reward -> parametersForTitle(reward) }
                 .compose(bindToLifecycle())
                 .subscribe(this.titleForAddOn)
