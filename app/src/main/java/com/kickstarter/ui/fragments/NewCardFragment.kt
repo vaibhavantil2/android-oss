@@ -158,18 +158,30 @@ class NewCardFragment : BaseFragment<NewCardFragmentViewModel.ViewModel>() {
         presentPaymentSheet()
     }
 
+    /**
+     * Flow description on the create and save new payment method scenario the future situation will be:
+     * 1. App call SetupIntent endpoint → 2. app shows paymentsheet with setupIntentclientsecret →
+     * 3. user introduce new payment information → 4.user ends →
+     * 5. App gets setupIntent result (Cancel, Failed, Completed) →
+     * 6. if Completed app calls query to retrieve all the payment methods for that user.
+     *
+     * Flow description on the create pledge scenario the future situation will be:
+     * 1. App call SetupIntent endpoint with (pledge, rewardID, etc ..) → 2. app shows paymentsheet with setupIntentclientsecret →
+     * 3. user selects payment type → 4.user ends →
+     * 5. App gets setupIntent result (Cancel, Failed, Completed)
+     *
+     * Flow description on the create fix pledge scenario the future situation will be:
+     * 1. App call SetupPayment endpoint with (pledge, rewardID, etc ..) → 2. app shows paymentsheet with setupIntentclientsecret →
+     * 3. user selects payment type → 4.user ends →
+     * 5. App gets SetupPayment result (Cancel, Failed, Completed)
+     */
     fun presentPaymentSheet() {
-        // TODO: we were not using previously setupIntents, just cardParams and card token generated with the cardParams
-        // TODO: do we need to change our current implementation to use setup Intents?
-        // TODO: if so, how to create a setup Intent? I assume we need to call some endpoint on the backend to fetch/create? (PLEDGE FLOW).
-        // TODO: if so, storage and show the saved payment methods? what should be the strategy there, Can the PaymentSheet be presented without SetupIntent.?? (SAVE PAYMENT METHOD FLOW ON USER ACCOUNT)
         val stripe = this.viewModel.environment.stripe()
-        // stripe.onSetupResult() ??
 
         paymentSheet = PaymentSheet(this as Fragment, ::onPaymentSheetResult)
         paymentSheet.presentWithSetupIntent(
-            // TODO  How to get the setupIntentClientSecret? I assume we will need to call some backend endpoint
-            setupIntentClientSecret= Secrets.StripePublishableKey.PRODUCTION,
+            // TODO: setupintent client secret provided by the backend to play around while the implementation of the endpoint takes place
+            setupIntentClientSecret= "seti_1KbABk4VvJ2PtfhKV8E7dvGe_secret_LHjfXxFl9UDucYtsL5a3WtySqjgqf5F",
             PaymentSheet.Configuration(
                 merchantDisplayName = "Kickstarter",
                 allowsDelayedPaymentMethods = true
