@@ -434,7 +434,7 @@ interface CommentsViewModel {
                     .build()
 
             apolloPaginate.isFetching()
-                .compose(bindToLifecycle<Boolean>())
+                .compose(bindToLifecycle())
                 .subscribe(this.isFetchingComments)
 
             apolloPaginate.paginatedData()

@@ -63,7 +63,7 @@ interface DeepLinkViewModel {
     }
 
     class ViewModel(environment: Environment) :
-        ActivityViewModel<DeepLinkActivity?>(environment), Outputs {
+        ActivityViewModel<DeepLinkActivity>(environment), Outputs {
 
         private val startBrowser = BehaviorSubject.create<String>()
         private val startDiscoveryActivity = BehaviorSubject.create<Void>()

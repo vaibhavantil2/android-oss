@@ -70,7 +70,7 @@ interface CreatorDashboardHeaderHolderViewModel {
     }
 
     class ViewModel(environment: Environment) :
-        ActivityViewModel<CreatorDashboardHeaderViewHolder?>(environment), Inputs, Outputs {
+        ActivityViewModel<CreatorDashboardHeaderViewHolder>(environment), Inputs, Outputs {
         private val currentUser: CurrentUserType
         private val optimizely: ExperimentsClientType
         @JvmField

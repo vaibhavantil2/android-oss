@@ -30,7 +30,7 @@ interface CreatorDashboardBottomSheetHolderViewModel {
     }
 
     class ViewModel(environment: Environment) :
-        ActivityViewModel<CreatorDashboardBottomSheetViewHolder?>(environment), Inputs, Outputs {
+        ActivityViewModel<CreatorDashboardBottomSheetViewHolder>(environment), Inputs, Outputs {
         @JvmField
         val inputs: Inputs = this
         @JvmField

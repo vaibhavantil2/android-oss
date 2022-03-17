@@ -357,7 +357,7 @@ interface ThreadViewModel {
 
             apolloPaginate
                 .isFetching()
-                .compose(bindToLifecycle<Boolean>())
+                .compose(bindToLifecycle())
                 .subscribe(this.isFetchingReplies)
 
             /** reversed replies **/

@@ -75,7 +75,7 @@ interface UpdateViewModel {
         fun hasCommentsDeepLinks(): Observable<Boolean>
     }
 
-    class ViewModel(environment: Environment) : ActivityViewModel<UpdateActivity?>(environment), Inputs, Outputs {
+    class ViewModel(environment: Environment) : ActivityViewModel<UpdateActivity>(environment), Inputs, Outputs {
 
         private val client: ApiClientType = environment.apiClient()
         private val externalLinkActivated = PublishSubject.create<Request?>()

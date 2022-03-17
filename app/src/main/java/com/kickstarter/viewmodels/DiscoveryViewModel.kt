@@ -112,7 +112,7 @@ interface DiscoveryViewModel {
         fun showErrorMessage(): Observable<String?>
     }
 
-    class ViewModel(environment: Environment) : ActivityViewModel<DiscoveryActivity?>(environment), Inputs, Outputs {
+    class ViewModel(environment: Environment) : ActivityViewModel<DiscoveryActivity>(environment), Inputs, Outputs {
         val inputs = this
         val outputs = this
 

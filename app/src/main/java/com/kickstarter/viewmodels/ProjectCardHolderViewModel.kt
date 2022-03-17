@@ -161,7 +161,7 @@ interface ProjectCardHolderViewModel {
     }
 
     class ViewModel(environment: Environment) :
-        ActivityViewModel<ProjectCardViewHolder?>(environment), Inputs, Outputs {
+        ActivityViewModel<ProjectCardViewHolder>(environment), Inputs, Outputs {
         private fun shouldShowLocationTag(params: DiscoveryParams): Boolean {
             return params.tagId() != null && params.tagId() == Editorial.LIGHTS_ON.tagId
         }
